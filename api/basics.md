@@ -3,6 +3,8 @@
 * [Getting basic device info](#getting-basic-device-info)
 * [Rebooting the device](#rebooting-the-device)
 * [Device factory reset](#device-factory-reset)
+* [Getting firmware information](#getting-firmware-information)
+* [Updating firmware](#updating-firmware)
 
 ## Getting basic device info
 
