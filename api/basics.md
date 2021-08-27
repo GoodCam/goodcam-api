@@ -1,10 +1,15 @@
 # Basic information and device control API
 
 * [Getting basic device info](#getting-basic-device-info)
+* [Updating basic device info](#updating-basic-device-info)
 * [Rebooting the device](#rebooting-the-device)
 * [Device factory reset](#device-factory-reset)
 * [Getting firmware information](#getting-firmware-information)
 * [Updating firmware](#updating-firmware)
+* [Getting current privacy mask settings](#getting-current-privacy-mask-settings)
+* [Setting privacy mask](#setting-privacy-mask)
+* [Getting OSD settings](#getting-osd-settings)
+* [Updating OSD settings](#updating-osd-settings)
 
 ## Getting basic device info
 
