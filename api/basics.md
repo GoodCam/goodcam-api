@@ -15,7 +15,8 @@ GET /v1/
 **Response Content-Type:** `application/json`
 
 **Response fields:**
-* TBD
+* `timezone`: device time zone in `+/-HH:MM` format
+* `firmware`: see [below](#getting-firmware-information)
 
 **Possible response codes:**
 * `200`
@@ -24,8 +25,43 @@ GET /v1/
 
 **Response example:**
 ```json
-{}
+{
+    "timezone": "+02:00",
+    "firmware": {
+        "board": "acbd18db4cc2f85cedef654fccc4a4d8",
+        "version": "1.0.0",
+        "build": "2021-07-12T13:44:18+00:00"
+    }
+}
 ```
+
+## Updating basic device info
+
+```text
+PUT /v1/
+```
+
+**Request Content-Type:** `application/json`
+
+**Request fields:**
+* `timezone`: device time zone in `+/-HH:MM` format
+
+**Request example:**
+```json
+{
+    "timezone": "9:45"
+}
+```
+
+**Response Content-Type:** `application/json`
+
+**Response fields:** see [the GET method](#getting-basic-device-info)
+
+**Possible response codes:**
+* `200`
+* `303`
+* `400`
+* `401`
 
 ## Rebooting the device
 
@@ -115,6 +151,138 @@ For example:
 
 **Possible response codes:**
 * `204`
+* `303`
+* `400`
+* `401`
+
+## Getting current privacy mask settings
+
+```text
+GET /v1/privacy-mask/
+```
+
+See [below](#setting-privacy-mask) for the privacy mask description.
+
+**Response Content-Type:** `application/json`
+
+**Response fields:**
+* `mask`: a list of triangles in the format described below
+
+**Possible response codes:**
+* `200`
+* `303`
+* `401`
+
+**Response example:**
+```json
+{
+    "mask": [
+        [0.1, 0.1, 0.2, 0.2, 0.3, 0.1]
+    ]
+}
+```
+
+## Setting privacy mask
+
+```text
+POST /v1/privacy-mask/
+```
+
+The privacy mask allows hiding arbitrary regions in the resulting video. The
+regions can be specified using a list of triangle coordinates. More complex
+shapes can be composed of multiple triangles if needed. The triangle
+coordinates are expected to be decimal numbers from the interval `[0; 1]` where
+the point `[0; 0]` represents the top left corner of the video and `[1; 1]`
+represents the bottom right corner of the video.
+
+Each triangle is represented by a list of 6 decimal numbers representing
+coordinates of the three corresponding triangle vertices. For example:
+
+```json
+[0.1, 0.1, 0.2, 0.2, 0.3, 0.1]
+```
+
+represents a triangle with the following `[x, y]` vertices:
+
+```text
+[0.1, 0.1]
+[0.2, 0.2]
+[0.3, 0.1]
+```
+
+**Request Content-Type:** `application/json`
+
+**Request fields:**
+* `mask`: a list of triangles in the format described above
+
+**Request example:**
+```json
+{
+    "mask": [
+        [0.1, 0.1, 0.2, 0.2, 0.3, 0.1]
+    ]
+}
+```
+
+**Response Content-Type:** `application/json`
+
+**Response fields:** same as the request
+
+**Possible response codes:**
+* `200`
+* `303`
+* `400`
+* `401`
+
+## Getting OSD settings
+
+```text
+GET /v1/osd/
+```
+
+**Response Content-Type:** `application/json`
+
+**Response fields:**
+* `label`: a text label displayed in the OSD area or `null` if the network
+  device name is being used
+
+**Possible response codes:**
+* `200`
+* `303`
+* `401`
+
+**Response example:**
+```json
+{
+    "label": "An arbitrary label"
+}
+```
+
+## Updating OSD settings
+
+```text
+PUT /v1/osd/
+```
+
+**Request Content-Type:** `application/json`
+
+**Request fields:**
+* `label`: a text label to be displayed in the OSD area or `null` if the
+  network device name should be used
+
+**Request example:**
+```json
+{
+    "label": "My Cool Label"
+}
+```
+
+**Response Content-Type:** `application/json`
+
+**Response fields:** same as the request
+
+**Possible response codes:**
+* `200`
 * `303`
 * `400`
 * `401`
