@@ -20,7 +20,7 @@ GET /v1/
 **Response Content-Type:** `application/json`
 
 **Response fields:**
-* `timezone`: device time zone in `+/-HH:MM` format
+* `timezone`: device time zone in [POSIX format](https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html)
 * `firmware`: see [below](#getting-firmware-information)
 
 **Possible response codes:**
@@ -31,7 +31,7 @@ GET /v1/
 **Response example:**
 ```json
 {
-    "timezone": "+02:00",
+    "timezone": "CET-1CEST,M3.5.0/2,M10.5.0/3",
     "firmware": {
         "board": "acbd18db4cc2f85cedef654fccc4a4d8",
         "version": "1.0.0",
@@ -49,12 +49,12 @@ PUT /v1/
 **Request Content-Type:** `application/json`
 
 **Request fields:**
-* `timezone`: device time zone in `+/-HH:MM` format
+* `timezone`: device time zone in [POSIX format](https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html)
 
 **Request example:**
 ```json
 {
-    "timezone": "9:45"
+    "timezone": "CET-1CEST,M3.5.0/2,M10.5.0/3"
 }
 ```
 
