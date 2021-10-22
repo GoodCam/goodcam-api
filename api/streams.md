@@ -6,6 +6,7 @@
 * [Getting stream limits](#getting-stream-limits)
 * [Getting JPEG snapshot](#getting-jpeg-snapshot)
 * [Getting MJPEG stream](#getting-mjpeg-stream)
+* [Getting MP4 stream](#getting-mp4-stream)
 
 ## Listing camera streams
 
@@ -24,6 +25,7 @@ The endpoint returns a list of objects describing particular media streams.
     * `jpeg`: single JPEG snapshot
     * `mjpeg`: MJPEG stream delivered over HTTP as a multipart body
     * `rtsp`: RTSP stream
+    * `mp4`: fragmented MP4 stream
   * `url`: stream URL
 * `video`: video settings with the following fields:
   * `codec`: video codec; possible values are:
@@ -89,6 +91,10 @@ quality is translated as QP 51, 100 quality is translated as QP 0).
             {
                 "format": "rtsp",
                 "url": "rtsp://192.168.1.10/videoMain"
+            },
+            {
+                "format": "mp4",
+                "url": "http://192.168.1.10/v1/streams/primary/stream.mp4"
             }
         ],
         "video": {
@@ -156,6 +162,10 @@ GET /v1/streams/{stream_name}/
         {
             "format": "rtsp",
             "url": "rtsp://192.168.1.10/videoMain"
+        },
+        {
+            "format": "mp4",
+            "url": "http://192.168.1.10/v1/streams/primary/stream.mp4"
         }
     ],
     "video": {
@@ -235,6 +245,10 @@ all other cases only the parameters that are being changed need to be present.
         {
             "format": "rtsp",
             "url": "rtsp://192.168.1.10/primary"
+        },
+        {
+            "format": "mp4",
+            "url": "http://192.168.1.10/v1/streams/primary/stream.mp4"
         }
     ],
     "video": {
@@ -325,6 +339,22 @@ GET /v1/streams/{stream_name}/stream.mjpeg
 This endpoint is only available for streams with the MJPEG video codec.
 
 **Response Content-Type:** `multipart/x-mixed-replace`
+
+**Possible response codes:**
+* `200`
+* `303`
+* `401`
+* `404`
+
+## Getting MP4 stream
+
+```text
+GET /v1/streams/{stream_name}/stream.mp4
+```
+
+This endpoint is only available for streams with the h264 video codec.
+
+**Response Content-Type:** `video/mp4`
 
 **Possible response codes:**
 * `200`
