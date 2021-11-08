@@ -6,6 +6,9 @@
 * [Device factory reset](#device-factory-reset)
 * [Getting firmware information](#getting-firmware-information)
 * [Updating firmware](#updating-firmware)
+* [Getting exposure info](#getting-exposure-info)
+* [Getting exposure settings](#getting-exposure-settings)
+* [Updating exposure settings](#updating-exposure-settings)
 * [Getting current privacy mask settings](#getting-current-privacy-mask-settings)
 * [Setting privacy mask](#setting-privacy-mask)
 * [Getting OSD settings](#getting-osd-settings)
@@ -156,6 +159,87 @@ For example:
 
 **Possible response codes:**
 * `204`
+* `303`
+* `400`
+* `401`
+
+## Getting exposure info
+
+```text
+GET /v1/exposure/
+```
+
+**Response Content-Type:** `application/json`
+
+**Response fields:**
+* `night_mode`: `true` if the device is currently in night mode, `false`
+  otherwise
+
+**Possible response codes:**
+* `200`
+* `303`
+* `401`
+
+**Response example:**
+```json
+{
+    "night_mode": false
+}
+```
+
+## Getting exposure settings
+
+```text
+GET /v1/exposure/settings/
+```
+
+**Response Content-Type:** `application/json`
+
+**Response fields:** see [below](#updating-exposure-settings)
+
+**Possible response codes:**
+* `200`
+* `303`
+* `401`
+
+**Response example:**
+```json
+{
+    "wdr": true,
+    "night_mode": "auto"
+}
+```
+
+## Updating exposure settings
+
+```text
+POST /v1/exposure/settings/
+```
+
+**Request Content-Type:** `application/json`
+
+**Request fields:**
+* `wdr`: enable/disable WDR mode
+* `night_mode`:
+  * `auto` - enable/disable night mode automatically based on information from
+    the light sensor (if available)
+  * `on` - enable night mode
+  * `off` - disable night mode
+
+**Request example:**
+```json
+{
+    "wdr": false,
+    "night_mode": "on"
+}
+```
+
+**Response Content-Type:** `application/json`
+
+**Response fields:** same as the request
+
+**Possible response codes:**
+* `200`
 * `303`
 * `400`
 * `401`
