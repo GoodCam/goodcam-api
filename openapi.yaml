@@ -1,0 +1,1461 @@
+openapi: '3.0.2'
+info:
+  title: GoodCam API
+  version: '1.0'
+  description: |
+    GoodCam devices provide a REST API, RTSP server and they are also able to
+    advertise themselves in a local network environment using mDNS and DNS-SD.
+
+    # Authentication
+
+    Most of the HTTP endpoints require authentication via
+    [HTTP Digest](https://tools.ietf.org/html/rfc7616). The same authentication
+    is also required by the RTSP server. It is possible to choose between MD5
+    and SHA-256 digest when the application is being configured for the first
+    time. It is not possible to switch between MD5 and SHA-256 later without
+    factory reset because the HTTP Digest standard itself does not provide any
+    means for digest algorithm negotiation. The only alternative solution would
+    be providing `WWW-Authenticate` challenges with all supported algorithms.
+    Such solution would not make much sense from the security point of view
+    because any potential attacker could simply choose the weakest digest
+    algorithm available.
+
+    The MD5 digest should be considered deprecated and its use should be
+    avoided. It's supported only for backwards compatibility with
+    [RFC 2617](https://tools.ietf.org/html/rfc2617) (the former definition of
+    HTTP Digest). Unfortunately, even modern web browsers currently don't
+    support other HTTP Digest algorithms than MD5, so in cases when the API is
+    being consumed by a web browser, it is possible to use the MD5 algorithm or
+    it is also possible to use an alternative HTTP client supporting the more
+    recent version of HTTP Digest. The latter option should be preferred if
+    possible.
+
+    # Security considerations
+
+    Currently, there is no TLS or other forms of encryption being used. The
+    REST API is available only via plain HTTP. The reasoning behind is simple.
+    Using TLS in a local network environment is impractical. There are
+    basically only two options for using TLS in such environments:
+
+    1. Registering a domain name that's globally unique (e.g. xyz.com) and
+       buying a proper TLS certificate from a CA (or using Let's Encrypt). All
+       devices in the local network would then have to use a local DNS server
+       which would be resolving the hostname to a local IP address. Note that
+       there is no CA that would issue a TLS certificate for a hostname that
+       cannot be verified as globally unique. Doing so would be a serious
+       security risk.
+    2. Using a self-signed certificate (either directly or as a custom CA) and
+       distributing it to all client devices within the local network. All the
+       client devices would still have to use a hostname to access the API.
+
+    Either of these options are rarely used because it isn't easy to set
+    everything up without certain technical skills and it may also include some
+    additional costs. Right now there is no other widely-used option for HTTP
+    encryption within local networks.
+
+    **Because of this, the application services (both HTTP and RTSP) should not
+    be exposed to the Internet or other outside networks.**
+
+    TLS support might be implemented in the future for the REST API to make
+    exposing the API publicly possible, however, the RTSP protocol does not
+    support TLS, so exposing it would still be a serious security risk.
+
+    # Service discovery
+
+    GoodCam devices advertise themselves using
+    [mDNS](https://tools.ietf.org/html/rfc6762) and
+    [DNS-SD](https://tools.ietf.org/html/rfc6763). The service name is
+    `_goodcam._tcp.local`, so all you need to do to find a GoodCam device in a
+    local network is to send an mDNS query asking for `PTR` records named
+    `_goodcam._tcp.local`. Doing so will yield instance names of all GoodCam
+    devices within the local network. These instance names can be used then to
+    retrieve `SRV` and `TXT` records of those instances. The `SRV` records will
+    then contain the device hostnames and ports where the REST API can be
+    accessed. The `TXT` records will contain the API version and the root for
+    the REST API endpoints. And, of course, the device IP addresses can be
+    retrieved by querying the `A` or `AAAA` records.
+
+    ## Example
+    ```text
+    -> mDNS query (QCLASS, QTYPE, QNAME):
+        ANY PTR _goodcam._tcp.local
+
+    <- mDNS response (RR TYPE, RR DATA):
+        PTR My\ Camera._goodcam._tcp.local
+        PTR GoodCam._goodcam._tcp.local
+        PTR GoodCam\ #11._goodcam._tcp.local
+
+    -> mDNS query (QCLASS, QTYPE, QNAME):
+        ANY SRV My\ Camera._goodcam._tcp.local
+
+    <- mDNS response (RR TYPE, RR DATA):
+        SRV 0 0 80 GC12345678ABCD.local
+
+    -> mDNS query (QCLASS, QTYPE, QNAME):
+        ANY TXT My\ Camera._goodcam._tcp.local
+
+    <- mDNS response (RR TYPE, RR DATA):
+        TXT root=/ version=1
+
+    -> mDNS query (QCLASS, QTYPE, QNAME):
+        ANY A GC12345678ABCD.local
+
+    <- mDNS response (RR TYPE, RR DATA):
+        A 192.168.123.123
+    ```
+
+    # Initial setup
+
+    When a GoodCam device hasn't been set up before (or after factory reset),
+    all API endpoints will be redirecting to `/v1/users/` indicating that there
+    are no user accounts and the initial setup should be performed.
+
+    The setup itself is simple. The API client is only required to create the
+    first user account (see
+    [Creating a new user account](#operation/create-user)).
+
+    # Example: accessing a camera in a mobile app
+
+    1. Look up all `_goodcam._tcp.local` services using service discovery.
+    2. List all instance names in the user interface, e.g.:
+      * My Camera
+      * GoodCam
+      * GoodCam #11
+    3. Allow entering a camera IP address manually (useful in cases when the
+       service discovery does not work for some reason).
+    4. After the user taps on a camera, perform the initial setup (if needed)
+       and log in to the camera (ask the user for credentials).
+    5. After successful login, allow changing camera settings, displaying video
+       streams, taking snapshots, etc.
+tags:
+  - name: basic
+    x-displayName: Basic information and device control
+  - name: users
+    x-displayName: User management
+  - name: network
+    x-displayName: Network settings
+  - name: exposure
+    x-displayName: Exposure
+  - name: privacy-mask
+    x-displayName: Privacy mask
+    description: |
+      The privacy mask allows hiding arbitrary regions in the resulting
+      video. The regions can be specified using a list of triangle
+      coordinates. More complex shapes can be composed of multiple triangles
+      if needed. The triangle coordinates are expected to be decimal numbers
+      from the interval `[0; 1]` where the point `[0; 0]` represents the top
+      left corner of the video and `[1; 1]` represents the bottom right
+      corner of the video.
+
+      Each triangle is represented by a list of 6 decimal numbers
+      representing coordinates of the three corresponding triangle vertices.
+      For example:
+
+      ```json
+      [0.1, 0.1, 0.2, 0.2, 0.3, 0.1]
+      ```
+
+      represents a triangle with the following `[x, y]` vertices:
+
+      ```text
+      [0.1, 0.1]
+      [0.2, 0.2]
+      [0.3, 0.1]
+      ```
+  - name: osd
+    x-displayName: OSD
+  - name: streaming
+    x-displayName: Streaming
+paths:
+  '/v1/':
+    get:
+      operationId: 'get-basic-info'
+      tags:
+        - basic
+      summary: Getting basic device info
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/BasicInformationResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-basic-info'
+      tags:
+        - basic
+      summary: Updating basic device info
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timezone:
+                  $ref: '#/components/schemas/Timezone'
+      responses:
+        '200':
+          $ref: '#/components/responses/BasicInformationResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/reboot/':
+    post:
+      operationId: 'reboot'
+      tags:
+        - basic
+      summary: Rebooting the device
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/factory-reset/':
+    post:
+      operationId: 'factory-reset'
+      tags:
+        - basic
+      summary: Device factory reset
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/firmware/':
+    get:
+      operationId: 'get-firmware-information'
+      tags:
+        - basic
+      summary: Getting firmware information
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/FirmwareInformationResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'update-firmware'
+      tags:
+        - basic
+      summary: Updating firmware
+      description: |
+        **Please note that firmware update is a delicate procedure. The device
+        power must not be interrupted during the firmware update. Doing so can
+        damage the device irreversibly.**
+
+        The firmware update may also factory reset the device depending on the
+        firmware version. The device will be reset into factory defaults if the
+        current version of the firmware and the new version of the firmware are
+        considered incompatible. The firmware (in)compatibility is determined
+        using these semantic versioning rules:
+        * `0.a.b` -> `0.a.c` where `c >= b` is considered a compatible update,
+        * `a.b.c` -> `a.d.e` where `a > 0` and `d >= b` is considered a
+          compatible update regardless of the relation between `c` and `e`,
+        * all other updates are considered incompatible and will trigger device
+          factory reset.
+
+        For example:
+        * `0.2.1` -> `0.1.0` - incompatible
+        * `0.2.1` -> `0.2.0` - incompatible
+        * `0.2.1` -> `0.2.1` - compatible
+        * `0.2.1` -> `0.2.2` - compatible
+        * `0.2.1` -> `0.3.0` - incompatible
+        * `2.2.2` -> `1.0.0` - incompatible
+        * `2.2.2` -> `2.1.0` - incompatible
+        * `2.2.2` -> `2.2.1` - compatible
+        * `2.2.2` -> `2.2.2` - compatible
+        * `2.2.2` -> `2.2.3` - compatible
+        * `2.2.2` -> `2.3.0` - compatible
+        * `2.2.2` -> `3.0.0` - incompatible
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        required: true
+        content:
+          application/octet-stream: {}
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/exposure/':
+    get:
+      operationId: 'get-exposure-info'
+      tags:
+        - exposure
+      summary: Getting exposure information
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/ExposureInformationResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/exposure/settings/':
+    get:
+      operationId: 'get-exposure-settings'
+      tags:
+        - exposure
+      summary: Getting exposure settings
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/ExposureSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-exposure-settings'
+      tags:
+        - exposure
+      summary: Updating exposure settings
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExposureSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/ExposureSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/privacy-mask/':
+    get:
+      operationId: 'get-privacy-mask'
+      tags:
+        - privacy-mask
+      summary: Getting current privacy mask settings
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/PrivacyMaskResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'set-privacy-mask'
+      tags:
+        - privacy-mask
+      summary: Setting privacy mask
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivacyMask'
+      responses:
+        '200':
+          $ref: '#/components/responses/PrivacyMaskResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/osd/':
+    get:
+      operationId: 'get-osd-settings'
+      tags:
+        - osd
+      summary: Getting OSD settings
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/OSDSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-osd-settings'
+      tags:
+        - osd
+      summary: Updating OSD settings
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OSDSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/OSDSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/users/':
+    get:
+      operationId: 'list-users'
+      tags:
+        - users
+      summary: Listing user accounts
+      security:
+        - 'HTTP Digest': []
+      description: |
+        The endpoint returns a list of objects describing particular user
+        accounts. No authentication is required during the initial setup.
+      responses:
+        '200':
+          $ref: '#/components/responses/UserListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'create-user'
+      tags:
+        - users
+      summary: Creating a new user account
+      security:
+        - 'HTTP Digest': []
+      description: |
+        The endpoint can be used for creating new user accounts and for initial
+        setup of the camera. No authentication is required during the initial
+        setup.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  example: '123456'
+                digest_algorithm:
+                  type: string
+                  enum:
+                    - md5
+                    - sha256
+                  description: |
+                    The field is being used only when creating the first user
+                    account (i.e. the initial setup). It will be silently
+                    ignored when creating any subsequent user accounts. If
+                    omitted during the initial setup, `sha256` will be used as
+                    the default value.
+                  example: md5
+      responses:
+        '201':
+          $ref: '#/components/responses/UserCreatedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/users/{username}/':
+    get:
+      operationId: 'get-user'
+      tags:
+        - users
+      summary: Getting user account details
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/UserDetailsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-user'
+      tags:
+        - users
+      summary: Changing user settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+                  example: '1234'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserDetailsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    delete:
+      operationId: 'delete-user'
+      tags:
+        - users
+      summary: Deleting user account
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      description: |
+        It isn't allowed to delete a user account if it is the only user
+        account. Use [factory reset](#operation/factory-reset) in such case.
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/network/':
+    get:
+      operationId: 'get-network-settings'
+      tags:
+        - network
+      summary: Getting general network settings
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-network-settings'
+      tags:
+        - network
+      summary: Changing network settings
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_name:
+                  type: string
+                  description: Name of the device (used as DNS-SD instance
+                    name). The device name cannot exceed 63 bytes when encoded
+                    as UTF-8.
+                  example: My Camera
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/network/interfaces/':
+    get:
+      operationId: 'get-network-interfaces'
+      tags:
+        - network
+      summary: Listing network interfaces
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkInterfaceListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/network/interfaces/{interface_name}/':
+    get:
+      operationId: 'get-network-interface'
+      tags:
+        - network
+      summary: Getting network interface settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: interface_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkInterfaceSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-network-interface'
+      tags:
+        - network
+      summary: Changing network interface settings
+      security:
+        - 'HTTP Digest': []
+      description: |
+        When changing the network interface mode, all fields required for the
+        particular mode must be present in the request. Otherwise, only the
+        fields being changed need to be present. The `mac_address` field can be
+        set to force using a given MAC address. Setting the field to `null`
+        will reset the interface to its original MAC address.
+
+        The device needs to be rebooted for the changes to take effect.
+
+        **Fields required for the `static` mode:**
+        * `ipv4_address`
+        * `ipv4_mask`
+
+        **Fields required for the `dhcp` mode:**
+        * `dns_from_dhcp`
+      parameters:
+        - name: interface_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NetworkInterfaceSettingsWrite'
+            example:
+              ipv4_address: 192.168.1.10
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkInterfaceSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/streams/':
+    get:
+      operationId: 'list-streams'
+      tags:
+        - streaming
+      summary: Listing camera streams
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/StreamListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/streams/{stream_name}/':
+    get:
+      operationId: 'get-stream-details'
+      tags:
+        - streaming
+      summary: Getting stream details
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/StreamInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-stream-settings'
+      tags:
+        - streaming
+      summary: Changing stream settings
+      security:
+        - 'HTTP Digest': []
+      description: |
+        Some parameters may be limited to only a certain set of values. See
+        the [stream limits](#operation/get-stream-limits) for more information.
+
+        When changing the codec, all video parameters valid for that codec must
+        be present (including `width`, `height` and `fps`). Similarly when
+        changing the bitrate mode, all parameters valid for that bitrate mode
+        must be present. In all other cases only the parameters that are being
+        changed need to be present.
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamSettingsWrite'
+            example:
+              video:
+                width: 1280
+                height: 720
+      responses:
+        '200':
+          $ref: '#/components/responses/StreamInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/streams/{stream_name}/limits/':
+    get:
+      operationId: 'get-stream-limits'
+      tags:
+        - streaming
+      summary: Getting stream limits
+      security:
+        - 'HTTP Digest': []
+      description: |
+        The limits might be codec-dependent (i.e. the endpoint might return
+        different sets of limits based on the current video codec).
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/StreamLimitsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/streams/{stream_name}/snapshot.jpg':
+    get:
+      operationId: 'get-jpeg-snapshot'
+      tags:
+        - streaming
+      summary: Getting JPEG snapshot
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is only available for streams with the MJPEG video codec.
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            image/jpeg: {}
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/streams/{stream_name}/stream.mjpeg':
+    get:
+      operationId: 'get-mjpeg-stream'
+      tags:
+        - streaming
+      summary: Getting MJPEG stream
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is only available for streams with the MJPEG video codec.
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            multipart/x-mixed-replace: {}
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/streams/{stream_name}/stream.mp4':
+    get:
+      operationId: 'get-mp4-stream'
+      tags:
+        - streaming
+      summary: Getting MP4 stream
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is only available for streams with the h264 video codec.
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            video/mp4: {}
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+components:
+  schemas:
+    BasicInformation:
+      type: object
+      properties:
+        timezone:
+          $ref: '#/components/schemas/Timezone'
+        firmware:
+          $ref: '#/components/schemas/FirmwareInformation'
+    FirmwareInformation:
+      type: object
+      properties:
+        board:
+          type: string
+          description: Hardware family identifier
+          example: acbd18db4cc2f85cedef654fccc4a4d8
+        version:
+          type: string
+          description: Firmware version
+          example: 1.0.0
+        build:
+          type: string
+          description: Firmware build
+          example: 2021-07-12T13:44:18+00:00
+    ExposureInformation:
+      type: object
+      properties:
+        night_mode:
+          type: boolean
+          description: |
+            `true` if the device is currently in night mode, `false` otherwise
+          example: true
+    ExposureSettings:
+      type: object
+      properties:
+        wdr:
+          type: boolean
+          description: Enable or disable WDR mode
+          example: true
+        night_mode:
+          type: string
+          enum: ['auto', 'on', 'off']
+          description: |
+            * `auto` - Enable or disable night mode automatically based on
+              information from the light sensor (if available)
+            * `on` - Enable night mode
+            * `off` - Disable night mode
+          example: auto
+    PrivacyMask:
+      type: object
+      properties:
+        mask:
+          type: array
+          description: A list of triangle definitions
+          items:
+            type: array
+            description: A six-tuple of numbers defining triangle vertices
+            items:
+              type: number
+      example:
+        mask:
+          - [0.1, 0.1, 0.2, 0.2, 0.3, 0.1]
+    OSDSettings:
+      type: object
+      properties:
+        label:
+          type: string
+          description: |
+            Custom label to be displayed in the OSD area or `null` to use the
+            device name from the network settings
+          example: Front door
+    Timezone:
+      type: string
+      description: Device timezone in [POSIX format](https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html)
+      example: "CET-1CEST,M3.5.0/2,M10.5.0/3"
+    ErrorDescription:
+      type: object
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+      example:
+        error:
+          - name: video
+            error:
+              - name: codec
+                error: unsupported codec
+    ErrorVariant:
+      oneOf:
+        - $ref: '#/components/schemas/PlainError'
+        - $ref: '#/components/schemas/DetailedError'
+    PlainError:
+      type: string
+      description: Error description
+    DetailedError:
+      type: array
+      items:
+        oneOf:
+          - $ref: '#/components/schemas/NamedFieldError'
+          - $ref: '#/components/schemas/IndexedFieldError'
+    NamedFieldError:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of a field causing the error
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+    IndexedFieldError:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: Index of a field causing the error
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+    UserDetails:
+      type: object
+      properties:
+        username:
+          type: string
+          example: admin
+        digest_algorithm:
+          type: string
+          enum:
+            - md5
+            - sha256
+          example: md5
+    NetworkSettings:
+      type: object
+      properties:
+        device_name:
+          type: string
+          description: Name of the device (used as DNS-SD instance name)
+          example: My Camera
+    BaseNetworkInterfaceSettingsRead:
+      allOf:
+        - type: object
+          properties:
+            name:
+              type: string
+              description: Name of the network interface
+              example: eth0
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsWrite'
+    BaseNetworkInterfaceSettingsWrite:
+      type: object
+      properties:
+        mac_address:
+          type: string
+          description: |
+            Interface MAC address as a string containing six hexadecimal
+            numbers separated with ":"
+          example: 00:11:22:33:44:55
+        mode:
+          type: string
+          enum:
+            - static
+            - dhcp
+          description: |
+            Interface mode, the possible values are:
+            * `static` - for static IP address configuration
+            * `dhcp` - for DHCP configuration
+          example: static
+    StaticNetworkInterfaceSettings:
+      type: object
+      properties:
+        ipv4_address:
+          type: string
+          description: IPv4 address of the network interface
+          example: 192.168.1.100
+        ipv4_mask:
+          type: string
+          description: IPv4 mask
+          example: 255.255.255.0
+        ipv4_gateway:
+          type: string
+          description: IPv4 gateway or `null` if the gateway is not set
+          example: 192.168.1.1
+        dns_servers:
+          type: array
+          description: |
+            A list of DNS servers. Each DNS server is represented by a
+            string containing an IP address.
+          example: ['192.168.1.1', '8.8.8.8']
+          items:
+            type: string
+    DHCPNetworkInterfaceSettings:
+      type: object
+      properties:
+        dns_from_dhcp:
+          type: boolean
+          description: |
+            Boolean flag indicating if the device is using DNS servers provided
+            by the DHCP server
+          example: true
+        custom_dns_servers:
+          type: array
+          items:
+            type: string
+          description: |
+            A list of custom DNS servers. Each DNS server is represented by a
+            string containing an IP address
+          example: ['192.168.1.1', '8.8.8.8']
+    StaticNetworkInterfaceSettingsRead:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsRead'
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettings'
+    DHCPNetworkInterfaceSettingsRead:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsRead'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettings'
+    StaticNetworkInterfaceSettingsWrite:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsWrite'
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettings'
+    DHCPNetworkInterfaceSettingsWrite:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsWrite'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettings'
+    NetworkInterfaceSettingsRead:
+      oneOf:
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettingsRead'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettingsRead'
+      discriminator:
+        propertyName: mode
+        mapping:
+          static: '#/components/schemas/StaticNetworkInterfaceSettingsRead'
+          dhcp: '#/components/schemas/DHCPNetworkInterfaceSettingsRead'
+    NetworkInterfaceSettingsWrite:
+      oneOf:
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettingsWrite'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettingsWrite'
+      discriminator:
+        propertyName: mode
+        mapping:
+          static: '#/components/schemas/StaticNetworkInterfaceSettingsWrite'
+          dhcp: '#/components/schemas/DHCPNetworkInterfaceSettingsWrite'
+    BaseBitrateSettings:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - vbr
+            - cbr
+          description: |
+            Bitrate control mode. Possible values are:
+            * `vbr` - variable bitrate
+            * `cbr` - constant bitrate
+          example: vbr
+    VBRBitrateSettings:
+      allOf:
+        - $ref: '#/components/schemas/BaseBitrateSettings'
+        - type: object
+          properties:
+            min_quality:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: |
+                Minimal acceptable video quality. A value between 0 and 100
+                (inclusive), where 0 is the lowest possible quality and 100 is
+                the highest possible quality.
+              example: 0
+            max_quality:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: |
+                Maximal video quality. A value between `min_quality` and 100.
+              example: 60
+            max_bitrate:
+              type: integer
+              minimum: 1
+              description: Maximum bitrate in kbps (an integer grater than 0)
+              example: 4000
+    CBRBitrateSettings:
+       allOf:
+        - $ref: '#/components/schemas/BaseBitrateSettings'
+        - type: object
+          properties:
+            bitrate:
+              type: integer
+              minimum: 1
+              description: Average bitrate in kbps (an integer grater than 0)
+              example: 4000
+    BitrateSettings:
+      description: |
+        Bitrate settings
+
+        The usual behavior of the VBR mode is that the encoder targets the
+        maximum possible quality from a given range which fits a given maximum
+        bitrate. Therefore, the video bitrate will drop below the given maximum
+        only if the maximum quality has been already reached. The maximum
+        quality can be also interpreted as the desired target quality. It is
+        also possible for the maximum bitrate to be be exceeded if the quality
+        would drop below a given minimum.
+
+        The exact meaning of the quality is codec-dependent. For example, in
+        case of h264, the 0-100 scale of quality is translated to the Quantizer
+        Parameter (0 quality is translated as QP 51, 100 quality is translated
+        as QP 0).
+      oneOf:
+        - $ref: '#/components/schemas/VBRBitrateSettings'
+        - $ref: '#/components/schemas/CBRBitrateSettings'
+      discriminator:
+        propertyName: mode
+        mapping:
+          vbr: '#/components/schemas/VBRBitrateSettings'
+          cbr: '#/components/schemas/CBRBitrateSettings'
+    BaseVideoSettings:
+      type: object
+      properties:
+        codec:
+          type: string
+          enum:
+            - h264
+            - mjpeg
+          description: Video codec
+          example: h264
+        width:
+          type: integer
+          description: |
+            Image width (see [below](#operation/get-stream-limits) for the
+            limits)
+          example: 1920
+        height:
+          type: integer
+          description: |
+            Image height (see [below](#operation/get-stream-limits) for the
+            limits)
+          example: 1080
+        fps:
+          type: integer
+          minimum: 1
+          description: Number of frames per second
+          example: 30
+        bitrate:
+          $ref: '#/components/schemas/BitrateSettings'
+    H264VideoSettings:
+      allOf:
+        - $ref: '#/components/schemas/BaseVideoSettings'
+        - type: object
+          properties:
+            gop_size:
+              type: integer
+              minimum: 1
+              description: |
+                Size of the Group of Pictures.
+
+                It is essentially the interval between IDR frames (key-frames).
+                The unit is the number of frames. It's recommended to keep the
+                interval between 1 and 6 seconds for live streams, so for
+                example if the FPS is 25, the GoP size should be between 25 and
+                150. Setting the value too low will increase bandwidth
+                requirements, whereas setting it too high will increase the
+                mean time before the stream playback can start and it can also
+                cause problems when streaming using HLS or fragmented MP4.
+              example: 60
+            profile:
+              type: string
+              enum:
+                - baseline
+                - main
+                - high
+              description: h264 profile
+              example: main
+    MJPEGVideoSettings:
+      allOf:
+        - $ref: '#/components/schemas/BaseVideoSettings'
+    VideoSettings:
+      oneOf:
+        - $ref: '#/components/schemas/H264VideoSettings'
+        - $ref: '#/components/schemas/MJPEGVideoSettings'
+      discriminator:
+        propertyName: codec
+        mapping:
+          h264: '#/components/schemas/H264VideoSettings'
+          mjpeg: '#/components/schemas/MJPEGVideoSettings'
+    StreamSettingsRead:
+      type: object
+      properties:
+        video:
+          $ref: '#/components/schemas/VideoSettings'
+    StreamSettingsWrite:
+      allOf:
+        - type: object
+          properties:
+            rtsp_path:
+              type: string
+              description: |
+                This parameter can be used to change the RTSP endpoint
+                associated with this stream; the string must start with "/"
+              example: '/videoMain'
+        - $ref: '#/components/schemas/StreamSettingsRead'
+    StreamInfo:
+      allOf:
+        - type: object
+          properties:
+            name:
+              type: string
+              description: Stream name
+              example: primary
+            urls:
+              type: array
+              items:
+                type: object
+                properties:
+                  format:
+                    type: string
+                    enum:
+                      - jpeg
+                      - mjpeg
+                      - rtsp
+                      - mp4
+                    description: |
+                      Stream format. Possible values are:
+                      * `jpeg` - single JPEG snapshot
+                      * `mjpeg` - MJPEG stream delivered over HTTP as a
+                        multipart body
+                      * `rtsp` - RTSP stream
+                      * `mp4` - fragmented MP4 stream
+                    example: rtsp
+                  url:
+                    type: string
+                    format: url
+                    description: Stream URL
+                    example: 'rtsp://192.168.1.10/videoMain'
+        - $ref: '#/components/schemas/StreamSettingsRead'
+    StreamLimits:
+      type: object
+      properties:
+        video:
+          type: object
+          description: Limits for the video parameters
+          properties:
+            valid_resolutions:
+              type: array
+              description: |
+                A list of valid resolutions (other resolutions will be
+                rejected).
+
+                Each resolution is represented by a string in form "WxH", where
+                "W" is a decimal width in pixels and "H" is a decimal height in
+                pixels
+              items:
+                type: string
+              example:
+                - "1920x1080"
+                - "1280x720"
+            max_fps:
+              type: integer
+              description: Maximum available frame rate
+              example: 30
+            max_gop_size:
+              type: integer
+              description: Maximum allowed GoP size
+              example: 300
+            max_bitrate:
+              type: integer
+              description: |
+                Maximum acceptable bitrate in kbps (it applies to both VBR and
+                CBR)
+              example: 100000
+  responses:
+    Uninitialized:
+      description: Uninitialized device
+    Unauthorized:
+      description: Missing or invalid credentials
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDescription'
+    BasicInformationResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BasicInformation'
+    FirmwareInformationResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FirmwareInformation'
+    ExposureInformationResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExposureInformation'
+    ExposureSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExposureSettings'
+    PrivacyMaskResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PrivacyMask'
+    OSDSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OSDSettings'
+    UserListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/UserDetails'
+    UserCreatedResponse:
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserDetails'
+    UserDetailsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserDetails'
+    NetworkSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NetworkSettings'
+    NetworkInterfaceListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/NetworkInterfaceSettingsRead'
+    NetworkInterfaceSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NetworkInterfaceSettingsRead'
+    StreamListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/StreamInfo'
+    StreamInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StreamInfo'
+    StreamLimitsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StreamLimits'
+  securitySchemes:
+    'HTTP Digest':
+      type: http
+      scheme: digest
