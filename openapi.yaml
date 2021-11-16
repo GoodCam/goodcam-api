@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.0'
+  version: '1.1.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -788,18 +788,31 @@ paths:
         - 'HTTP Digest': []
       description: |
         The limits might be codec-dependent (i.e. the endpoint might return
-        different sets of limits based on the current video codec).
+        different sets of limits based on the current video codec). You can use
+        the `vcodec` query parameter to query limits for a given codec.
       parameters:
         - name: stream_name
           in: path
           required: true
           schema:
             type: string
+        - name: vcodec
+          in: query
+          description: |
+            Video codec for which the limits will be retrieved. If not
+            provided, the current video codec will be used.
+          schema:
+            type: string
+            enum:
+              - mjpeg
+              - h264
       responses:
         '200':
           $ref: '#/components/responses/StreamLimitsResponse'
         '303':
           $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -890,6 +903,10 @@ components:
     BasicInformation:
       type: object
       properties:
+        api_version:
+          type: string
+          description: Version of the API
+          example: '1.1.0'
         timezone:
           $ref: '#/components/schemas/Timezone'
         firmware:
@@ -904,11 +921,11 @@ components:
         version:
           type: string
           description: Firmware version
-          example: 1.0.0
+          example: '1.0.0'
         build:
           type: string
           description: Firmware build
-          example: 2021-07-12T13:44:18+00:00
+          example: '2021-07-12T13:44:18+00:00'
     ExposureInformation:
       type: object
       properties:
@@ -1320,6 +1337,16 @@ components:
           type: object
           description: Limits for the video parameters
           properties:
+            valid_codecs:
+              type: array
+              description: |
+                A list of valid video codecs (other codecs will be rejected).
+                If the field isn't present, all video codecs will be accepted.
+              items:
+                type: string
+                enum:
+                  - mjpeg
+                  - h264
             valid_resolutions:
               type: array
               description: |
