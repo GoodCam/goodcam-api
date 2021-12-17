@@ -12,7 +12,7 @@ limit is reached. Unfortunately, this limit applies to the whole MJPEG stream
 and not just a single frame. There is also no direct way how to listen for this
 event and restart the stream. The only way how to deal with this problem is to
 fetch and parse the stream on your own. You can find the solution in the
-[advanced web player example](/GoodCam/goodcam-api/tree/master/examples/advanced-web-player).
+[advanced web player example](https://github.com/GoodCam/goodcam-api/tree/master/examples/advanced-web-player).
 
 Anyway, if you don't mind the eventual interruption of the stream, you can use
 the example below.

@@ -12,6 +12,6 @@ The examples below demonstrate how to integrate a GoodCam camera into your
 application. All the examples are based on the
 [API documentation](https://goodcam.github.io/goodcam-api/) mentioned above.
 
-* [Absolute minimum for h264 playback on web](/GoodCam/goodcam-api/tree/master/examples/minimal-web-player-h264)
-* [Absolute minimum for MJPEG playback on web](/GoodCam/goodcam-api/tree/master/examples/minimal-web-player-mjpeg)
-* [More sophisticated web player](/GoodCam/goodcam-api/tree/master/examples/advanced-web-player)
+* [Absolute minimum for h264 playback on web](https://github.com/GoodCam/goodcam-api/tree/master/examples/minimal-web-player-h264)
+* [Absolute minimum for MJPEG playback on web](https://github.com/GoodCam/goodcam-api/tree/master/examples/minimal-web-player-mjpeg)
+* [More sophisticated web player](https://github.com/GoodCam/goodcam-api/tree/master/examples/advanced-web-player)
