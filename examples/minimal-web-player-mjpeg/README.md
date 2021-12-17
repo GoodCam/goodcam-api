@@ -22,7 +22,7 @@ with the MJPEG codec. You won't be able to get the MJPEG stream if you change
 the codec to h264.
 
 ```html
-<img src="http://USERNAME:PASSWORD@CAMERA_IP/api/v1/streams/secondary/stream.mjpeg">
+<img src="http://CAMERA_IP/api/v1/streams/secondary/stream.mjpeg">
 ```
 
 See [example.html](example.html) for the complete example.
