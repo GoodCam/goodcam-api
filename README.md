@@ -5,3 +5,13 @@ advertise themselves in a local network environment using mDNS and DNS-SD.
 
 See our [API documentation](https://goodcam.github.io/goodcam-api/) for more
 information.
+
+## Integration examples
+
+The examples below demonstrate how to integrate a GoodCam camera into your
+application. All the examples are based on the
+[API documentation](https://goodcam.github.io/goodcam-api/) mentioned above.
+
+* [Absolute minimum for h264 playback on web](minimal-web-player-h264)
+* [Absolute minimum for MJPEG playback on web](minimal-web-player-mjpeg)
+* [More sophisticated web player](advanced-web-player)

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal non autoplay example for h264 streams</title>
+    <style>
+        label, input, select, button {
+            display: block;
+        }
+
+        input, select, button {
+            margin-bottom: 1rem;
+        }
+
+        video {
+            width: 60%;
+            background: black;
+        }
+    </style>
+</head>
+<body>
+    <!--
+        A bit of a boilerplate to allow changing the camera IP address and
+        stream more easily.
+    -->
+    <form id="camera-info">
+        <label for="ip-address">
+            Camera IP address or hostname:
+        </label>
+        <input type="text" name="ip-address">
+
+        <label for="stream">
+            Stream:
+        </label>
+        <select name="stream">
+            <option value="primary">primary</option>
+            <option value="secondary">secondary</option>
+        </select>
+
+        <button name="update" type="button">Update</button>
+    </form>
+
+    <!--
+        The actual video player. We just add the source dynamically using JS
+        to allow changing the source easily.
+
+        If you don't want to use the JS code below, you can replace it with
+        your own JS code or simply delete it and uncomment the source line
+        inside of the video element (you'll also have to adjust the source URL
+        accordingly).
+    -->
+    <video id="my-video" preload="none">
+        <!-- <source src="http://192.168.1.100/api/v1/streams/primary/stream.mp4" type="video/mp4"> -->
+    </video>
+
+    <button id="play-button" type="button">Play</button>
+
+    <!-- All the JS goes here: -->
+    <script>
+        (function() {
+            const LS_ITEM_NAME = 'gc-example-player-h264';
+
+            // get the last settings from the local storage or use defaults
+            let settings = localStorage.getItem(LS_ITEM_NAME);
+
+            try {
+                settings = JSON.parse(settings);
+            } catch (e) {
+                settings = null;
+            }
+
+            if (!settings || !settings['ip-address'] || !settings['stream']) {
+                settings = {
+                    'ip-address': '192.168.1.100',
+                    'stream': 'primary',
+                };
+            }
+
+            const form = document.getElementById('camera-info');
+            const video = document.getElementById('my-video');
+            const playButton = document.getElementById('play-button');
+
+            const ipAddress = form['ip-address'];
+            const stream = form['stream'];
+            const update = form['update'];
+
+            // fill in the form
+            ipAddress.value = settings['ip-address'];
+            stream.value = settings['stream'];
+
+            function getStreamUrl() {
+                let a = ipAddress.value;
+                let s = stream.value;
+
+                return `http://${a}/api/v1/streams/${s}/stream.mp4`;
+            }
+
+            // disable form submit
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+            });
+
+            // update stream URL and the settings in local storage on the
+            // "update" button click
+            update.addEventListener('click', (e) => {
+                localStorage.setItem(LS_ITEM_NAME, JSON.stringify({
+                    'ip-address': ipAddress.value,
+                    'stream': stream.value,
+                }));
+
+                video.src = getStreamUrl();
+            });
+
+            // play the video on the "play" button click
+            playButton.addEventListener('click', (e) => {
+                video.play();
+            });
+
+            // fill in the source URL when the page gets loaded
+            video.src = getStreamUrl();
+        })();
+    </script>
+</body>
+</html>
