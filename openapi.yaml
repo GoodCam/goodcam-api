@@ -166,6 +166,40 @@ tags:
     x-displayName: OSD
   - name: streaming
     x-displayName: Streaming
+  - name: cloud
+    x-displayName: Cloud client
+    description: |
+      The cloud client works as a gateway for remote access to the camera. The
+      client is responsible for maintaining a permanent connection with a cloud
+      service. The connection itself is done using HTTP upgrade and
+      documentation of the corresponding protocol is available upon request.
+      The cloud client supports both HTTP and HTTPS, so it is possible (and
+      preferable) to secure the connection using TLS.
+
+      ### Connecting a camera to GoodCam Cloud
+
+      In principle, the camera can connect to any cloud service implementing
+      the underlying protocol, however, the pairing process may be different
+      with third party cloud providers, so we will focus only on the GoodCam
+      Cloud service here.
+
+      In order to set up your camera for remote access, you will need to:
+
+      1. Perform the initial setup (if needed; see [Initial setup](#section/Initial-setup)).
+      2. Enable the cloud client (see [Changing cloud client settings](#operation/update-cloud-client-settings)).
+      3. Get the camera device ID (see [Getting information about the cloud client](#operation/get-cloud-client-info)).
+      4. Initiate pairing for the device ID (see the GoodCam Cloud API documentation).
+      5. Connect the camera to the cloud (see [Connecting to the cloud service](#operation/connect-to-cloud)).
+
+      Once paired, the camera will maintain a permanent connection with the
+      cloud service and it will be available for remote access via the GoodCam
+      Cloud API. The camera can be paired with only one GoodCam Cloud account
+      at a time and only this user will be able to access the camera remotely.
+
+      _Note: The cloud service URL should be set to
+      `https://proxy.goodcam.io:8888` in order to connect to the GoodCam Cloud
+      service. Different URLs may be used in order to connect the camera to
+      another cloud service provider._
 paths:
   '/v1/':
     get:
@@ -698,6 +732,71 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           description: Not Found
+  '/v1/cloud/':
+    get:
+      operationId: 'get-cloud-client-info'
+      tags:
+        - cloud
+      summary: Getting information about the cloud client
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/CloudClientInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-cloud-client-settings'
+      tags:
+        - cloud
+      summary: Changing cloud client settings
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloudClientSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/CloudClientInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/cloud/connect/':
+    post:
+      operationId: 'connect-to-cloud'
+      tags:
+        - cloud
+      summary: Connecting to the cloud service
+      description: |
+        A POST request to this endpoint will trigger an immediate connection
+        attempt. If the client is already connected to the cloud service, the
+        current connection will be closed and a new connection will be created.
+        The API will return one of the following responses depending on the
+        result of the connection attempt:
+
+        * `204 No Content` - if the connection attempt was successful
+        * `400 Bad Request` - if the cloud client is disabled
+        * `502 Bad Gateway` - if the connection attempt failed
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          $ref: '#/components/responses/BadGateway'
   '/v1/streams/':
     get:
       operationId: 'list-streams'
@@ -1138,6 +1237,53 @@ components:
         mapping:
           static: '#/components/schemas/StaticNetworkInterfaceSettingsWrite'
           dhcp: '#/components/schemas/DHCPNetworkInterfaceSettingsWrite'
+    CloudClientSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates if the cloud client is enabled or not.
+          example: true
+        url:
+          type: string
+          format: url
+          description: URL of the cloud service.
+          example: https://proxy.goodcam.io:8888/
+    CloudClientInfo:
+      allOf:
+        - $ref: '#/components/schemas/CloudClientSettings'
+        - type: object
+          properties:
+            device_id:
+              type: string
+              description: Unique identifier of this device.
+              example: 6b1f16f1-ccf2-42d3-8087-5024793383d6
+            status:
+              type: string
+              enum:
+                - disabled
+                - connecting
+                - connected
+                - disconnected
+                - suspended
+              example: connected
+              description: |
+                Current status of the cloud client. Possible values are:
+                * `disabled` - The client is disabled.
+                * `connecting` - The client is trying to establish a new
+                  connection to the cloud service.
+                * `connected` - The client is connected to the cloud service
+                  and the device is ready for remote access.
+                * `disconnected` - The client is disconnected from the cloud
+                  service (e.g. due to unavailable network) but the client is
+                  still active and it will try to create a new connection as
+                  soon as possible.
+                * `suspended` - The client is disconnected from the cloud
+                  service and its operation has been suspended because the
+                  cloud service rejected the connection. This can happen for
+                  example if the device has not been paired with any cloud
+                  account yet and there is no pairing request for this device
+                  either.
     BaseBitrateSettings:
       type: object
       properties:
@@ -1386,6 +1532,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorDescription'
+    BadGateway:
+      description: Bad gateway
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDescription'
     BasicInformationResponse:
       description: OK
       content:
@@ -1462,6 +1614,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/NetworkInterfaceSettingsRead'
+    CloudClientInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CloudClientInfo'
     StreamListResponse:
       description: OK
       content:
