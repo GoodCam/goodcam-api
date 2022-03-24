@@ -1,0 +1,220 @@
+openapi: '3.0.2'
+info:
+  title: GoodCam Cloud API
+  version: '1.0.0'
+  description: |
+    GoodCam Cloud service provides remote access to the API of connected
+    cameras. In order to connect a camera to the cloud service, you need to
+    configure and enable the cloud client in the camera, create an API key and
+    properly pair the camera with your cloud account.
+
+    # API Token
+
+    Pairing a new camera with GoodCam Cloud or accessing a paired camera
+    requires a cloud API token.
+
+    1. Visit <a href="https://cloud.goodcam.io/" target="_blank">GoodCam Cloud</a>
+       and create your account.
+    2. In the "API keys" section, add a new API key (you can have more API keys
+       linked with your account).
+
+    To access API-key protected endpoints, pass the API key in the
+    `X-GoodCam-ApiKey` header field.
+
+    # Pairing a camera with GoodCam Cloud
+
+    The cloud client in the camera needs to be configured and enabled first
+    (see the <a href="index.html#tag/cloud" target="_blank">Camera API documentation</a>).
+tags:
+  - name: pairing
+    x-displayName: Pair camera with GoodCam Cloud
+  - name: connection
+    x-displayName: Access camera via GoodCam Cloud
+servers:
+  - url: https://cloud.goodcam.io/api
+paths:
+  '/pairing/':
+    post:
+      operationId: 'initiate-pairing'
+      tags:
+        - pairing
+      summary: Initiate pairing
+      security:
+        - 'ApiKeyAuth': []
+      description: |
+        Creates pairing request for a camera with a specified device ID
+        within your GoodCam Cloud account. If the camera connects to the cloud
+        within the next 10 minutes, it is permanently assigned to your account.
+        Otherwise, the request expires and a new pairing request needs to be
+        created before the camera can be paired again.
+
+        Successfully paired cameras are shown in the "Devices" section of
+        GoodCam Cloud web interface.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_id:
+                  $ref: '#/components/schemas/DeviceId'
+      responses:
+        '200':
+          description: Created
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/AlreadyPaired'
+  '/get-camera-connection/':
+    get:
+      operationId: 'get-camera-connection'
+      tags:
+        - connection
+      summary: Get camera connection credentials
+      security:
+        - 'ApiKeyAuth': []
+      description: |
+        Cameras paired with GoodCam Cloud maintain a connection with one of
+        GoodCam proxy servers. In order to make API calls to a camera via the
+        proxy, you need to obtain address of the current proxy and a
+        time-limited access token.
+
+        Once you have the connection credentials, you can access camera API
+        endpoints by making a request to the proxy and passing the access token
+        in the `X-GoodCam-Token` header field. The proxy will forward your
+        request to the camera and return the camera response.
+
+        The proxy will forward all requests with the following exceptions:
+
+        * `/v1/streams/{stream_name}/stream.mjpeg`,
+        * `/v1/streams/{stream_name}/stream.mp4`,
+        * or potentially any other endpoint that could transfer audio/video
+          from the camera.
+
+        Remote access to the video from your camera will be possible via
+        WebRTC. This feature is currently under heavy development.
+      parameters:
+        - in: query
+          name: device_id
+          schema:
+            $ref: '#/components/schemas/DeviceId'
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CameraConnectionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  schemas:
+    DeviceId:
+      type: string
+      description: Unique identifier of the device.
+      example: 6b1f16f1-ccf2-42d3-8087-5024793383d6
+    CameraConnectionInfo:
+      type: object
+      properties:
+        url:
+          type: string
+          description: URL of the proxy camera is connected to
+          example: https://proxy01.goodcam.io
+        token:
+          type: string
+          description: Access token
+          example: xxxxxx.yyyyyyy.zzzzzz
+    AlreadyPairedError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Device is already assigned"
+    ErrorDescription:
+      type: object
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+      example:
+        error:
+          - name: video
+            error:
+              - name: codec
+                error: unsupported codec
+    ErrorVariant:
+      oneOf:
+        - $ref: '#/components/schemas/PlainError'
+        - $ref: '#/components/schemas/DetailedError'
+    PlainError:
+      type: string
+      description: Error description
+    DetailedError:
+      type: array
+      items:
+        oneOf:
+          - $ref: '#/components/schemas/NamedFieldError'
+          - $ref: '#/components/schemas/IndexedFieldError'
+    NamedFieldError:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of a field causing the error
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+    IndexedFieldError:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: Index of a field causing the error
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+  responses:
+    Uninitialized:
+      description: Uninitialized device
+    Unauthorized:
+      description: Missing or invalid credentials
+    Forbidden:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDescription'
+          example: { "detail": "Authentication credentials were not provided." }
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDescription'
+          example: {"device_id":["This field is required."]}
+    AlreadyPaired:
+      description: Device is already assigned
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Device is already assigned
+    BadGateway:
+      description: Bad gateway
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDescription'
+    CameraConnectionResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CameraConnectionInfo'
+  securitySchemes:
+    'ApiKeyAuth':
+      type: apiKey
+      in: header
+      name: X-GoodCam-ApiKey

@@ -188,7 +188,7 @@ tags:
       1. Perform the initial setup (if needed; see [Initial setup](#section/Initial-setup)).
       2. Enable the cloud client (see [Changing cloud client settings](#operation/update-cloud-client-settings)).
       3. Get the camera device ID (see [Getting information about the cloud client](#operation/get-cloud-client-info)).
-      4. Initiate pairing for the device ID (see the GoodCam Cloud API documentation).
+      4. Initiate pairing for the device ID (see the <a href="cloud.html" target="_blank">GoodCam Cloud API documentation</a>).
       5. Connect the camera to the cloud (see [Connecting to the cloud service](#operation/connect-to-cloud)).
 
       Once paired, the camera will maintain a permanent connection with the

@@ -6,6 +6,10 @@ advertise themselves in a local network environment using mDNS and DNS-SD.
 See our [API documentation](https://goodcam.github.io/goodcam-api/) for more
 information.
 
+It is also possible to access your devices remotely via GoodCam Cloud. See the
+[GoodCam Cloud API documentation](https://goodcam.github.io/goodcam-api/cloud.html)
+for more details.
+
 ## Integration examples
 
 The examples below demonstrate how to integrate a GoodCam camera into your
