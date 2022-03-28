@@ -33,7 +33,7 @@ tags:
 servers:
   - url: https://cloud.goodcam.io/api
 paths:
-  '/pairing/':
+  '/v1/pairing/':
     post:
       operationId: 'initiate-pairing'
       tags:
@@ -68,7 +68,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/AlreadyPaired'
-  '/get-camera-connection/':
+  '/v1/camera/{device_id}/':
     get:
       operationId: 'get-camera-connection'
       tags:
@@ -97,7 +97,7 @@ paths:
         Remote access to the video from your camera will be possible via
         WebRTC. This feature is currently under heavy development.
       parameters:
-        - in: query
+        - in: path
           name: device_id
           schema:
             $ref: '#/components/schemas/DeviceId'
