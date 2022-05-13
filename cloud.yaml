@@ -94,8 +94,12 @@ paths:
         * or potentially any other endpoint that could transfer audio/video
           from the camera.
 
-        Remote access to the video from your camera will be possible via
-        WebRTC. This feature is currently under heavy development.
+        Remote access to the video from your camera is be possible via WebRTC.
+        See the
+        <a href="https://github.com/GoodCam/goodcam-api/tree/master/docs/webrtc.md" target="_blank">WebRTC signaling documentation</a>
+        and the
+        <a href="https://github.com/GoodCam/goodcam-api/tree/master/examples/webrtc-player" target="_blank">WebRTC player example</a>
+        for more information.
       parameters:
         - in: path
           name: device_id

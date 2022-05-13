@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal autoplay example for h264 streams</title>
+    <style>
+        label, input, select, button {
+            display: block;
+        }
+
+        input, select, button {
+            margin-bottom: 1rem;
+        }
+
+        video {
+            width: 60%;
+            background: black;
+        }
+    </style>
+</head>
+<body>
+    <!--
+        A bit of a boilerplate to allow changing the camera IP address and
+        stream more easily.
+    -->
+    <p>
+        To test the autoplay, update the configuration below, click on the
+        update button and refresh the page.
+    </p>
+    <form id="camera-info">
+        <label for="ip-address">
+            Camera IP address:
+        </label>
+        <input type="text" name="ip-address">
+
+        <label for="username">
+            Camera username:
+        </label>
+        <input type="text" name="username">
+
+        <label for="password">
+            Camera password:
+        </label>
+        <input type="password" name="password">
+
+        <label for="stream">
+            Stream:
+        </label>
+        <select name="stream">
+            <option value="primary">primary</option>
+            <option value="secondary">secondary</option>
+        </select>
+
+        <button name="update" type="button">Update</button>
+    </form>
+
+    <!--
+        The actual video player element.
+    -->
+    <video id="my-video" muted></video>
+
+    <!-- All the JS goes here: -->
+    <script src="js/webrtc-player.js"></script>
+    <script type="module">
+        (function() {
+            // add your STUN servers here
+            const stunServers = [
+                'stun.goodcam.io:3478',
+            ];
+
+            const LS_ITEM_NAME = 'gc-example-player-webrtc';
+
+            // get the last settings from the local storage or use defaults
+            let settings = localStorage.getItem(LS_ITEM_NAME);
+
+            try {
+                settings = JSON.parse(settings);
+            } catch (e) {
+                settings = null;
+            }
+
+            if (!settings || !settings['ip-address'] || !settings['stream']) {
+                settings = {
+                    'ip-address': '192.168.1.100',
+                    'stream': 'primary',
+                    'username': 'admin',
+                    'password': 'password'
+                };
+            }
+
+            const form = document.getElementById('camera-info');
+            const video = document.getElementById('my-video');
+
+            const ipAddress = form['ip-address'];
+            const username = form['username'];
+            const password = form['password'];
+            const stream = form['stream'];
+            const update = form['update'];
+
+            // fill in the form
+            ipAddress.value = settings['ip-address'];
+            stream.value = settings['stream'];
+            username.value = settings['username'];
+            password.value = settings['password'];
+
+            function getStreamUrl() {
+                let a = ipAddress.value;
+                let u = encodeURIComponent(username.value);
+                let p = encodeURIComponent(password.value);
+                let s = stream.value;
+
+                return `ws://${u}:${p}@${a}/api/v1/streams/${s}/web-rtc/`;
+            }
+
+            function createPlayer() {
+                const url = getStreamUrl();
+                const player = new VideoPlayer(video);
+
+                player.play(url, stunServers);
+
+                return player;
+            }
+
+            let player = createPlayer();
+
+            // disable form submit
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+            });
+
+            // restart playback and update the settings in local storage on the
+            // "update" button click
+            update.addEventListener('click', (e) => {
+                localStorage.setItem(LS_ITEM_NAME, JSON.stringify({
+                    'ip-address': ipAddress.value,
+                    'stream': stream.value,
+                    'username': username.value,
+                    'password': password.value,
+                }));
+
+                // make sure that we stop the old player before we replace it
+                player.stop();
+
+                player = createPlayer();
+            });
+        })();
+    </script>
+</body>
+</html>

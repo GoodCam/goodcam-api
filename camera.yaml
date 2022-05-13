@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.2.0'
+  version: '1.3.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -991,6 +991,62 @@ paths:
           description: OK
           content:
             video/mp4: {}
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/streams/{stream_name}/web-rtc/':
+    get:
+      operationId: 'web-rtc-signaling'
+      tags:
+        - streaming
+      summary: WebRTC signaling
+      security:
+        - 'HTTP Digest': []
+      description: |
+        Entrypoint for WebSocket based signaling protocol for initiating WebRTC
+        sessions. The signaling protocol itself is described
+        <a href="https://github.com/GoodCam/goodcam-api/tree/master/docs/webrtc.md" target="_blank">here</a>.
+        See also
+        <a href="https://github.com/GoodCam/goodcam-api/tree/master/examples/webrtc-player" target="_blank">the player example</a>
+        for more information.
+
+        This endpoint is only available for streams with the h264 video codec.
+      parameters:
+        - name: Connection
+          in: header
+          required: true
+          schema:
+            type: string
+          example: upgrade
+        - name: Upgrade
+          in: header
+          required: true
+          schema:
+            type: string
+          example: websocket
+        - name: Sec-WebSocket-Version
+          in: header
+          required: true
+          schema:
+            type: integer
+          example: 13
+        - name: Sec-WebSocket-Key
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: Sec-WebSocket-Protocol
+          in: header
+          required: false
+          schema:
+            type: string
+          example: gcsp
+      responses:
+        '101':
+          description: Switching Protocols
         '303':
           $ref: '#/components/responses/Uninitialized'
         '401':

@@ -11,3 +11,5 @@ This video player adds a bit more JavaScript code to address these topics:
   limits.
 
 See `example.html` and contents of the `js` folder for the full implementation.
+
+_Note: This player does not support streaming via WebRTC._
