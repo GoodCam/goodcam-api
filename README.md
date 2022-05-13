@@ -19,3 +19,4 @@ application. All the examples are based on the
 * [Absolute minimum for h264 playback on web](https://github.com/GoodCam/goodcam-api/tree/master/examples/minimal-web-player-h264)
 * [Absolute minimum for MJPEG playback on web](https://github.com/GoodCam/goodcam-api/tree/master/examples/minimal-web-player-mjpeg)
 * [More sophisticated web player](https://github.com/GoodCam/goodcam-api/tree/master/examples/advanced-web-player)
+* [WebRTC player](https://github.com/GoodCam/goodcam-api/tree/master/examples/webrtc-player)
