@@ -6,6 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minimal autoplay example for h264 streams</title>
     <style>
+        body {
+            margin: 1rem;
+        }
+
+        *, body, html {
+            box-sizing: border-box;
+        }
+
         label, input, select, button {
             display: block;
         }
@@ -14,9 +22,58 @@
             margin-bottom: 1rem;
         }
 
-        video {
-            width: 60%;
+        .video-wrapper {
+            max-height: 50vh;
+            display: flex;
+        }
+
+        .video-wrapper .video-wrapper-inner {
+            position: relative;
+            height: 100%;
+            max-width: 100%;
+        }
+
+        .video-wrapper video {
+            height: 100%;
+            max-width: 100%;
+            object-fit: contain;
+            object-position: left center;
             background: black;
+        }
+
+        .video-wrapper .overlay {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .video-wrapper .overlay .play-button {
+            position: relative;
+            outline: none;
+            border: none;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            cursor: pointer;
+            width: 8rem;
+            height: 8rem;
+            border-radius: 4rem;
+        }
+
+        .video-wrapper .overlay .play-button svg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 3rem;
+            height: 3rem;
+            transform: translate(-50%, -50%);
+            fill: white;
+        }
+
+        .video-wrapper .overlay .play-button.hidden {
+            display: none;
         }
     </style>
 </head>
@@ -35,16 +92,6 @@
         </label>
         <input type="text" name="ip-address">
 
-        <label for="username">
-            Camera username:
-        </label>
-        <input type="text" name="username">
-
-        <label for="password">
-            Camera password:
-        </label>
-        <input type="password" name="password">
-
         <label for="stream">
             Stream:
         </label>
@@ -57,14 +104,56 @@
     </form>
 
     <!--
-        The actual video player element.
+        The actual video player.
     -->
-    <video id="my-video" muted></video>
+    <div class="video-wrapper">
+        <div class="video-wrapper-inner">
+            <div class="overlay">
+                <button id="play-button" class="play-button hidden" type="button">
+                    <svg height="640" width="512" version="1.1" id="svg4" viewBox="0 0 512 640" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+                        <defs id="defs8" />
+                        <path d="M 0,0 512,320 0,640 Z" id="path2" />
+                    </svg>
+                </button>
+            </div>
+            <video id="my-video" muted></video>
+        </div>
+    </div>
 
     <!-- All the JS goes here: -->
     <script src="js/webrtc-player.js"></script>
     <script type="module">
         (function() {
+            // this is a hack to force Safari (and other WebKit based browsers)
+            // to ask for credentials even for cross-origin requests
+            const iframe = document.createElement('iframe');
+
+            iframe.style.display = 'none';
+
+            document.body.appendChild(iframe);
+
+            async function getCredentials(proto, addr) {
+                const credentials = new Promise((resolve, reject) => {
+                    iframe.onload = () => {
+                        iframe.onload = null;
+                        iframe.onerror = null;
+
+                        resolve();
+                    };
+
+                    iframe.onerror = (e) => {
+                        iframe.onload = null;
+                        iframe.onerror = null;
+
+                        reject(e);
+                    };
+
+                    iframe.src = `${proto}//${addr}/api/v1/`;
+                });
+
+                await credentials;
+            }
+
             // add your STUN servers here
             const stunServers = [
                 'stun.goodcam.io:3478',
@@ -85,42 +174,86 @@
                 settings = {
                     'ip-address': '192.168.1.100',
                     'stream': 'primary',
-                    'username': 'admin',
-                    'password': 'password'
                 };
             }
 
             const form = document.getElementById('camera-info');
             const video = document.getElementById('my-video');
+            const play = document.getElementById('play-button');
 
             const ipAddress = form['ip-address'];
-            const username = form['username'];
-            const password = form['password'];
             const stream = form['stream'];
             const update = form['update'];
 
             // fill in the form
             ipAddress.value = settings['ip-address'];
             stream.value = settings['stream'];
-            username.value = settings['username'];
-            password.value = settings['password'];
 
-            function getStreamUrl() {
+            async function fetchFromCamera(proto, addr, endpoint, timeout) {
+                const abort = new AbortController();
+
+                setTimeout(() => {
+                    abort.abort("connection timeout");
+                }, timeout || 5000);
+
+                const response = await fetch(`${proto}//${addr}/api/v1${endpoint}`, {
+                    credentials: 'include',
+                    signal: abort.signal,
+                });
+
+                if (!response.ok) {
+                    throw new Error("camera request error");
+                }
+
+                return await response.json();
+            }
+
+            async function getStreamUrl() {
                 let a = ipAddress.value;
-                let u = encodeURIComponent(username.value);
-                let p = encodeURIComponent(password.value);
                 let s = stream.value;
+                let p = window.location.protocol;
 
-                return `ws://${u}:${p}@${a}/api/v1/streams/${s}/web-rtc/`;
+                if (p == 'file:') {
+                    p = 'http:';
+                }
+
+                await getCredentials(p, a);
+
+                let u = encodeURIComponent((await fetchFromCamera(p, a, '/users'))[0]['username']);
+                let t = encodeURIComponent((await fetchFromCamera(p, a, `/users/${u}/token`))['token']);
+
+                if (p == 'https:') {
+                    p = 'wss:';
+                } else {
+                    p = 'ws:';
+                }
+
+                return `${p}//${a}/api/v1/streams/${s}/web-rtc/?x-goodcam-devicetoken=${t}`;
             }
 
             function createPlayer() {
-                const url = getStreamUrl();
-                const player = new VideoPlayer(video);
+                let promise = (async () => {
+                    try {
+                        const url = await getStreamUrl();
+                        const player = new VideoPlayer(video, play);
 
-                player.play(url, stunServers);
+                        player.play(url, stunServers);
 
-                return player;
+                        return player;
+                    } catch (e) {
+                        console.error('unable to create player', e);
+                    }
+                })();
+
+                return {
+                    stop: async () => {
+                        let player = await promise;
+
+                        if (player) {
+                            player.stop();
+                        }
+                    }
+                };
             }
 
             let player = createPlayer();
@@ -132,18 +265,22 @@
 
             // restart playback and update the settings in local storage on the
             // "update" button click
-            update.addEventListener('click', (e) => {
+            update.addEventListener('click', async (e) => {
                 localStorage.setItem(LS_ITEM_NAME, JSON.stringify({
                     'ip-address': ipAddress.value,
                     'stream': stream.value,
-                    'username': username.value,
-                    'password': password.value,
                 }));
 
-                // make sure that we stop the old player before we replace it
                 player.stop();
 
                 player = createPlayer();
+            });
+
+            play.addEventListener('click', async (e) => {
+                await video.play();
+
+                // hide the play button only if the playback has started
+                play.classList.add('hidden');
             });
         })();
     </script>

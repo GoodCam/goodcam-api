@@ -8,9 +8,11 @@ class StreamingSession {
      * @param {String} url WebRTC signaling URL
      * @param {Element} videoElem video element that will display the video
      * content
+     * @param {Element} playButtonElem play button element
      */
-    constructor(videoElem) {
+    constructor(videoElem, playButtonElem) {
         this.videoElem = videoElem;
+        this.playButtonElem = playButtonElem;
 
         this.bufferLocalICECandidates = true;
         this.bufferedLocalICECandidates = [];
@@ -38,9 +40,14 @@ class StreamingSession {
         });
 
         this.connection.onicecandidate = (e) => this.sendLocalCandidate(e.candidate);
-        this.connection.ontrack = (e) => {
+        this.connection.ontrack = async (e) => {
             this.videoElem.srcObject = new MediaStream([e.track]);
-            this.videoElem.play();
+
+            try {
+                await this.videoElem.play();
+            } catch (e) {
+                this.playButtonElem.classList.remove('hidden');
+            }
         };
 
         this.ws = await new Promise((resolve, reject) => {
@@ -271,8 +278,8 @@ class VideoPlayer {
      *
      * @param {Element} videoElem video element
      */
-    constructor(videoElem) {
-        this.session = new StreamingSession(videoElem);
+    constructor(videoElem, playButtonElem) {
+        this.session = new StreamingSession(videoElem, playButtonElem);
         this.connect = null;
     }
 
