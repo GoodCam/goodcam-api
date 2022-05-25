@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.3.0'
+  version: '1.4.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -29,6 +29,13 @@ info:
     it is also possible to use an alternative HTTP client supporting the more
     recent version of HTTP Digest. The latter option should be preferred if
     possible.
+
+    Some web browsers also do not support HTTP Digest for WebSocket, which is
+    being used for WebRTC signaling. In order to overcome this issue, it is
+    possible to generate access tokens which can be used as a query parameter.
+    Whenever there is a valid access token within query string of a request URL
+    (query parameter `X-GoodCam-DeviceToken`), HTTP Digest authentication will
+    be skipped.
 
     # Security considerations
 
@@ -601,6 +608,39 @@ paths:
           $ref: '#/components/responses/Uninitialized'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/users/{username}/token/':
+    get:
+      operationId: 'get-access-token'
+      tags:
+        - users
+      summary: Creating an access token
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      description: |
+        This endpoint will generate an access token which can be used to access
+        the API endpoints on behalf of the corresponding user without
+        authenticating using HTTP Digest. **Even though the access tokens are
+        valid only for a short period of time, their use should be avoided if
+        possible.** Especially in cases where they need to be sent unencrypted
+        (using plain HTTP) over untrusted networks.
+
+        The name of the query parameter that can be used to pass access tokens
+        to the API is `X-GoodCam-DeviceToken`.
+      responses:
+        '200':
+          $ref: '#/components/responses/AccessTokenResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1650,6 +1690,17 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UserDetails'
+    AccessTokenResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              token:
+                type: string
+                description: Access token
+                example: '...'
     NetworkSettingsResponse:
       description: OK
       content:

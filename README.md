@@ -20,3 +20,10 @@ application. All the examples are based on the
 * [Absolute minimum for MJPEG playback on web](https://github.com/GoodCam/goodcam-api/tree/master/examples/minimal-web-player-mjpeg)
 * [More sophisticated web player](https://github.com/GoodCam/goodcam-api/tree/master/examples/advanced-web-player)
 * [WebRTC player](https://github.com/GoodCam/goodcam-api/tree/master/examples/webrtc-player)
+
+## Knowledge base
+
+The links below explain some common pitfalls that you can face when integrating
+GoodCam APIs into your project.
+
+* [No credentials prompt for cross-origin requests in Safari](docs/cors-credentials-prompt.md)
