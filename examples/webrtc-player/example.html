@@ -23,7 +23,7 @@
         }
 
         .video-wrapper {
-            max-height: 50vh;
+            height: calc(100vh - 2rem);
             display: flex;
         }
 
@@ -72,9 +72,10 @@
             fill: white;
         }
 
-        .video-wrapper .overlay .play-button.hidden {
+        .hidden {
             display: none;
         }
+
     </style>
 </head>
 <body>
@@ -87,10 +88,32 @@
         update button and refresh the page.
     </p>
     <form id="camera-info">
-        <label for="ip-address">
-            Camera IP address:
+        <label for="connection">
+            Connection type:
         </label>
-        <input type="text" name="ip-address">
+        <select name="connection">
+            <option value="direct">direct</option>
+            <option value="cloud">via cloud</option>
+        </select>
+
+        <div id="direct-connection-info">
+            <label for="ip-address">
+                Camera IP address:
+            </label>
+            <input type="text" name="ip-address">
+        </div>
+
+        <div id="cloud-connection-info">
+            <label for="device-id">
+                Device ID:
+            </label>
+            <input type="text" name="device-id">
+
+            <label for="api-key">
+                API Key:
+            </label>
+            <input type="text" name="api-key">
+        </div>
 
         <label for="stream">
             Stream:
@@ -132,7 +155,11 @@
 
             document.body.appendChild(iframe);
 
-            async function getCredentials(proto, addr) {
+            async function getCredentials(proto, addr, query) {
+                if (!query) {
+                    query = new URLSearchParams();
+                }
+
                 const credentials = new Promise((resolve, reject) => {
                     iframe.onload = () => {
                         iframe.onload = null;
@@ -148,7 +175,7 @@
                         reject(e);
                     };
 
-                    iframe.src = `${proto}//${addr}/api/v1/`;
+                    iframe.src = `${proto}//${addr}/api/v1/?${query.toString()}`;
                 });
 
                 await credentials;
@@ -170,8 +197,9 @@
                 settings = null;
             }
 
-            if (!settings || !settings['ip-address'] || !settings['stream']) {
+            if (!settings || !settings['connection']) {
                 settings = {
+                    'connection': 'direct',
                     'ip-address': '192.168.1.100',
                     'stream': 'primary',
                 };
@@ -180,55 +208,104 @@
             const form = document.getElementById('camera-info');
             const video = document.getElementById('my-video');
             const play = document.getElementById('play-button');
+            const cloudConnectionInfo = document.getElementById('cloud-connection-info');
+            const directConnectionInfo = document.getElementById('direct-connection-info');
 
+            const connection = form['connection'];
+            const deviceId = form['device-id'];
+            const apiKey = form['api-key'];
             const ipAddress = form['ip-address'];
             const stream = form['stream'];
             const update = form['update'];
 
             // fill in the form
+            connection.value = settings['connection'];
+            deviceId.value = settings['device-id'];
+            apiKey.value = settings['api-key'];
             ipAddress.value = settings['ip-address'];
             stream.value = settings['stream'];
 
-            async function fetchFromCamera(proto, addr, endpoint, timeout) {
+            async function customFetch(url, options) {
                 const abort = new AbortController();
 
                 setTimeout(() => {
                     abort.abort("connection timeout");
-                }, timeout || 5000);
+                }, options.timeout || 5000);
 
-                const response = await fetch(`${proto}//${addr}/api/v1${endpoint}`, {
-                    credentials: 'include',
-                    signal: abort.signal,
-                });
+                delete options.timeout;
+
+                options.signal = abort.signal;
+
+                const response = await fetch(url, options);
 
                 if (!response.ok) {
-                    throw new Error("camera request error");
+                    throw new Error("request error");
                 }
 
                 return await response.json();
             }
 
+            async function fetchFromCloud(key, endpoint, timeout) {
+                return await customFetch(`https://cloud.goodcam.io/api/v1${endpoint}`, {
+                    credentials: 'omit',
+                    headers: {
+                        'X-GoodCam-ApiKey': key,
+                    },
+                });
+            }
+
+            async function fetchFromCamera(proto, addr, endpoint, query, timeout) {
+                if (!query) {
+                    query = new URLSearchParams();
+                }
+
+                let url = `${proto}//${addr}/api/v1${endpoint}?${query.toString()}`;
+
+                return await customFetch(url, {
+                    credentials: 'include',
+                });
+            }
+
             async function getStreamUrl() {
-                let a = ipAddress.value;
-                let s = stream.value;
-                let p = window.location.protocol;
+                let protocol;
+                let address;
+                let query = new URLSearchParams();
 
-                if (p == 'file:') {
-                    p = 'http:';
-                }
-
-                await getCredentials(p, a);
-
-                let u = encodeURIComponent((await fetchFromCamera(p, a, '/users'))[0]['username']);
-                let t = encodeURIComponent((await fetchFromCamera(p, a, `/users/${u}/token`))['token']);
-
-                if (p == 'https:') {
-                    p = 'wss:';
+                if (connection.value === 'direct') {
+                    protocol = window.location.protocol;
+                    address = ipAddress.value;
                 } else {
-                    p = 'ws:';
+                    let device = await fetchFromCloud(apiKey.value, `/camera/${deviceId.value}/`);
+
+                    let proxy = new URL(device.url);
+
+                    address = proxy.host;
+                    protocol = proxy.protocol;
+
+                    query.set('x-goodcam-proxytoken', device.token);
                 }
 
-                return `${p}//${a}/api/v1/streams/${s}/web-rtc/?x-goodcam-devicetoken=${t}`;
+                let s = stream.value;
+
+                if (protocol == 'file:') {
+                    protocol = 'http:';
+                }
+
+                await getCredentials(protocol, address, query);
+
+                let users = await fetchFromCamera(protocol, address, '/users', query);
+                let user = encodeURIComponent(users[0]['username']);
+                let token = await fetchFromCamera(protocol, address, `/users/${user}/token`, query);
+
+                query.set('x-goodcam-devicetoken', token['token']);
+
+                if (protocol == 'https:') {
+                    protocol = 'wss:';
+                } else {
+                    protocol = 'ws:';
+                }
+
+                return `${protocol}//${address}/api/v1/streams/${s}/web-rtc/?${query.toString()}`;
             }
 
             function createPlayer() {
@@ -267,6 +344,9 @@
             // "update" button click
             update.addEventListener('click', async (e) => {
                 localStorage.setItem(LS_ITEM_NAME, JSON.stringify({
+                    'connection': connection.value,
+                    'device-id': deviceId.value,
+                    'api-key': apiKey.value,
                     'ip-address': ipAddress.value,
                     'stream': stream.value,
                 }));
@@ -276,12 +356,26 @@
                 player = createPlayer();
             });
 
+            /// change input field visibility
+            connection.addEventListener('change', () => {
+                if (connection.value === 'direct') {
+                    directConnectionInfo.classList.remove('hidden');
+                    cloudConnectionInfo.classList.add('hidden');
+                } else {
+                    directConnectionInfo.classList.add('hidden');
+                    cloudConnectionInfo.classList.remove('hidden');
+                }
+            });
+
             play.addEventListener('click', async (e) => {
                 await video.play();
 
                 // hide the play button only if the playback has started
                 play.classList.add('hidden');
             });
+
+            // hide input fields that should not be visible
+            connection.dispatchEvent(new Event('change'));
         })();
     </script>
 </body>
