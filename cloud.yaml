@@ -84,8 +84,14 @@ paths:
 
         Once you have the connection credentials, you can access camera API
         endpoints by making a request to the proxy and passing the access token
-        in the `X-GoodCam-Token` header field. The proxy will forward your
+        in the `X-GoodCam-ProxyToken` header field. The proxy will forward your
         request to the camera and return the camera response.
+
+        If it isn't possible to pass the access token as an HTTP header field
+        for some reason (e.g. you're using the
+        [JS WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)),
+        you can also pass it as a query parameter `x-goodcam-proxytoken`.
+        However, if possible, the HTTP header field should be preferred.
 
         The proxy will forward all requests with the following exceptions:
 

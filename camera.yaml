@@ -34,7 +34,7 @@ info:
     being used for WebRTC signaling. In order to overcome this issue, it is
     possible to generate access tokens which can be used as a query parameter.
     Whenever there is a valid access token within query string of a request URL
-    (query parameter `X-GoodCam-DeviceToken`), HTTP Digest authentication will
+    (query parameter `x-goodcam-devicetoken`), HTTP Digest authentication will
     be skipped.
 
     # Security considerations
@@ -65,7 +65,10 @@ info:
 
     TLS support might be implemented in the future for the REST API to make
     exposing the API publicly possible, however, the RTSP protocol does not
-    support TLS, so exposing it would still be a serious security risk.
+    support TLS, so exposing it would still be a serious security risk. If
+    needed, the remote access functionality should be implemented using
+    [GoodCam Cloud](https://goodcam.github.io/goodcam-api/cloud.html) and
+    WebRTC.
 
     # Service discovery
 
@@ -79,8 +82,9 @@ info:
     retrieve `SRV` and `TXT` records of those instances. The `SRV` records will
     then contain the device hostnames and ports where the REST API can be
     accessed. The `TXT` records will contain the API version and the root for
-    the REST API endpoints. And, of course, the device IP addresses can be
-    retrieved by querying the `A` or `AAAA` records.
+    the REST API endpoints. The API root is `/api/` by default. And, of course,
+    the device IP addresses can be retrieved by querying the `A` or `AAAA`
+    records.
 
     ## Example
     ```text
@@ -134,6 +138,8 @@ info:
        and log in to the camera (ask the user for credentials).
     5. After successful login, allow changing camera settings, displaying video
        streams, taking snapshots, etc.
+servers:
+  - url: 'http://0.0.0.0/api/'
 tags:
   - name: basic
     x-displayName: Basic information and device control
