@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.4.0'
+  version: '1.5.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -179,6 +179,51 @@ tags:
     x-displayName: OSD
   - name: streaming
     x-displayName: Streaming
+  - name: motion-detection
+    x-displayName: Motion detection
+    description: |
+      The motion detection engine, if enabled, continuously evaluates video
+      frames with constant rate of 5 evaluations per second. The API can be
+      used to configure the motion detection engine and to retrieve motion
+      detection metadata or to send motion detection events.
+
+      The motion detection metadata can be retrieved using WebSocket as a
+      continuous stream of JSON objects, each describing a single evaluation
+      (see [Getting motion detection metadata stream](#operation/motion-detection-stream) for more info).
+
+      The motion detection engine recognizes internally two states:
+      * idle
+      * alert
+
+      By default the engine is in the _idle_ state. If there is a motion, the
+      engine immediately transitions to the _alert_ state. If there is no
+      motion for at least a given amount of time (this can be configured using
+      the `reset_delay` parameter), the engine transitions back to the _idle_
+      state.
+
+      Whenever the engine transitions to the _alert_ state, a new motion
+      detection event is generated. The event is then sent to given hooks (see
+      below). In situations when the engine would stay in the _alert_ state for
+      a long time, follow-up events can be generated. The delay until the next
+      follow-up event can be configured using the `resend_delay` parameter.
+
+      ### For webhooks
+
+      If the configured HTTP method is POST and the request body isn't
+      specified, the default body will be a JSON object containing the
+      following properties:
+
+      * `alert_id` - Sequential ID of the motion detection alert. The ID is
+        incremented on each transition of the motion detection engine from
+        the _idle_ state to the _alert_ state. The ID will be reset to zero on
+        each restart of the motion detection engine. This includes camera
+        reboots and changes of the motion detection settings.
+      * `event_id` - Sequential ID indicating how many events with this alert
+        ID have been already generated. The first event will have its event
+        ID set to zero. Each follow-up event (if configured) will then have
+        the event ID greater than zero.
+      * `regions` - The most recent list of image regions where motion was
+        detected (see [Getting motion detection metadata stream](#operation/motion-detection-stream) for more info).
   - name: cloud
     x-displayName: Cloud client
     description: |
@@ -443,6 +488,9 @@ paths:
       tags:
         - osd
       summary: Getting OSD settings
+      description: |
+        This endpoint is available only if the `osd`
+        [feature](#operation/get-basic-info) is indicated.
       security:
         - 'HTTP Digest': []
       responses:
@@ -457,6 +505,9 @@ paths:
       tags:
         - osd
       summary: Updating OSD settings
+      description: |
+        This endpoint is available only if the `osd`
+        [feature](#operation/get-basic-info) is indicated.
       security:
         - 'HTTP Digest': []
       requestBody:
@@ -784,6 +835,9 @@ paths:
       tags:
         - cloud
       summary: Getting information about the cloud client
+      description: |
+        This endpoint is available only if the `cloud_client`
+        [feature](#operation/get-basic-info) is indicated.
       security:
         - 'HTTP Digest': []
       responses:
@@ -798,6 +852,9 @@ paths:
       tags:
         - cloud
       summary: Changing cloud client settings
+      description: |
+        This endpoint is available only if the `cloud_client`
+        [feature](#operation/get-basic-info) is indicated.
       security:
         - 'HTTP Digest': []
       requestBody:
@@ -821,6 +878,9 @@ paths:
         - cloud
       summary: Connecting to the cloud service
       description: |
+        This endpoint is available only if the `cloud_client`
+        [feature](#operation/get-basic-info) is indicated.
+
         A POST request to this endpoint will trigger an immediate connection
         attempt. If the client is already connected to the cloud service, the
         current connection will be closed and a new connection will be created.
@@ -841,6 +901,263 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+  '/v1/motion-detection/':
+    get:
+      operationId: 'get-motion-detection-settings'
+      tags:
+        - motion-detection
+      summary: Getting motion detection settings
+      description: |
+        This endpoint is available only if the `motion_detection`
+        [feature](#operation/get-basic-info) is indicated.
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/MotionDetectionSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-motion-detection-settings'
+      tags:
+        - motion-detection
+      summary: Updating motion detection settings
+      description: |
+        This endpoint is available only if the `motion_detection`
+        [feature](#operation/get-basic-info) is indicated.
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MotionDetectionSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/MotionDetectionSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/motion-detection/stream/':
+    get:
+      operationId: 'motion-detection-stream'
+      tags:
+        - motion-detection
+      summary: Getting motion detection metadata stream
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `motion_detection`
+        [feature](#operation/get-basic-info) is indicated and the motion
+        detection engine is enabled.
+
+        It is an entrypoint for a WebSocket based stream of motion detection
+        metadata. The protocol is trivial. After the WebSocket handshake, the
+        server will send motion detection metadata as a JSON object each 200
+        ms.
+
+        The metadata objects will have the following properties:
+        * `regions` - a list of objects describing regions with detected motion
+
+        Each region object will have the following properties:
+        * `top` - relative position of the top edge (a value between 0 and 1)
+        * `right` - relative position of the right edge (a value between 0 and 1)
+        * `bottom` - relative position of the bottom edge (a value between 0 and 1)
+        * `left` - relative position of the left edge (a value between 0 and 1)
+      parameters:
+        - name: Connection
+          in: header
+          required: true
+          schema:
+            type: string
+          example: upgrade
+        - name: Upgrade
+          in: header
+          required: true
+          schema:
+            type: string
+          example: websocket
+        - name: Sec-WebSocket-Version
+          in: header
+          required: true
+          schema:
+            type: integer
+          example: 13
+        - name: Sec-WebSocket-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/motion-detection/hooks/':
+    get:
+      operationId: 'list-motion-detection-hooks'
+      tags:
+        - motion-detection
+      summary: Listing motion detection hooks
+      description: |
+        This endpoint is available only if the `motion_detection` and the
+        `hooks` [features](#operation/get-basic-info) are both indicated.
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/MotionDetectionHookListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'create-motion-detection-hook'
+      tags:
+        - motion-detection
+      summary: Creating a new motion detection hook
+      description: |
+        This endpoint is available only if the `motion_detection` and the
+        `hooks` [features](#operation/get-basic-info) are both indicated.
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewHook'
+      responses:
+        '201':
+          $ref: '#/components/responses/MotionDetectionHookCreatedResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/motion-detection/hooks/{hook_id}/':
+    get:
+      operationId: 'get-motion-detection-hook'
+      tags:
+        - motion-detection
+      summary: Getting motion detection hook configuration
+      description: |
+        This endpoint is available only if the `motion_detection` and the
+        `hooks` [features](#operation/get-basic-info) are both indicated.
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: hook_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          $ref: '#/components/responses/MotionDetectionHookResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-motion-detection-hook'
+      tags:
+        - motion-detection
+      summary: Updating motion detection hook
+      description: |
+        This endpoint is available only if the `motion_detection` and the
+        `hooks` [features](#operation/get-basic-info) are both indicated.
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: hook_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Hook'
+      responses:
+        '200':
+          $ref: '#/components/responses/MotionDetectionHookResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    delete:
+      operationId: 'delete-motion-detection-hook'
+      tags:
+        - motion-detection
+      summary: Deleting motion detection hook
+      description: |
+        This endpoint is available only if the `motion_detection` and the
+        `hooks` [features](#operation/get-basic-info) are both indicated.
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: hook_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/motion-detection/hooks/{hook_id}/test/':
+    post:
+      operationId: 'test-motion-detection-hook'
+      tags:
+        - motion-detection
+      summary: Testing a motion detection hook
+      description: |
+        This endpoint is available only if the `motion_detection` and the
+        `hooks` [features](#operation/get-basic-info) are both indicated.
+
+        A POST request to this endpoint will generate a test event and send it
+        to the webhook.
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: hook_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
         '502':
           $ref: '#/components/responses/BadGateway'
   '/v1/streams/':
@@ -1025,7 +1342,9 @@ paths:
       security:
         - 'HTTP Digest': []
       description: |
-        This endpoint is only available for streams with the h264 video codec.
+        This endpoint is available only if the `fragmented_mp4`
+        [feature](#operation/get-basic-info) is indicated and the stream codec
+        is set to h264.
       parameters:
         - name: stream_name
           in: path
@@ -1052,14 +1371,16 @@ paths:
       security:
         - 'HTTP Digest': []
       description: |
-        Entrypoint for WebSocket based signaling protocol for initiating WebRTC
-        sessions. The signaling protocol itself is described
+        This endpoint is available only if the `webrtc`
+        [feature](#operation/get-basic-info) is indicated and the stream codec
+        is set to h264.
+
+        It is an entrypoint for WebSocket based signaling protocol for
+        initiating WebRTC sessions. The signaling protocol itself is described
         <a href="https://github.com/GoodCam/goodcam-api/tree/master/docs/webrtc.md" target="_blank">here</a>.
         See also
         <a href="https://github.com/GoodCam/goodcam-api/tree/master/examples/webrtc-player" target="_blank">the player example</a>
         for more information.
-
-        This endpoint is only available for streams with the h264 video codec.
       parameters:
         - name: Connection
           in: header
@@ -1112,6 +1433,60 @@ components:
           $ref: '#/components/schemas/Timezone'
         firmware:
           $ref: '#/components/schemas/FirmwareInformation'
+        features:
+          type: object
+          properties:
+            osd:
+              type: boolean
+              description: |
+                Indicates if the OSD feature and the
+                [corresponding API endpoints](#tag/osd) are available.
+              example: true
+            fragmented_mp4:
+              type: boolean
+              description: |
+                Indicates if the
+                [fragmented MP4 streaming](#operation/get-mp4-stream) is
+                available.
+              example: true
+            webrtc:
+              type: boolean
+              description: |
+                Indicates if the
+                [WebRTC streaming](#operation/web-rtc-signaling) is available.
+              example: true
+            motion_detection:
+              type: boolean
+              description: |
+                Indicates it the motion detection feature and the
+                [corresponding API endpoints](#tag/motion-detection) are
+                available.
+              example: true
+            hooks:
+              type: boolean
+              description: |
+                Indicates if any form of API hooks are supported (e.g. webhooks
+                or emails).
+              example: true
+            http_webhooks:
+              type: boolean
+              description: |
+                Indicates if the basic webhook functionality is available. This
+                feature also implies `hooks`. Webhooks can be accepted by
+                various parts of the API. For example, the motion detection API
+                can accept webhooks as event targets.
+              example: true
+            https_webhooks:
+              type: boolean
+              description: |
+                Indicates if HTTPS webhook targets can be used. This feature
+                also implies `http_webhooks`.
+              example: true
+            cloud_client:
+              type: boolean
+              description: |
+                Indicates if the [cloud client](#tag/cloud) is available.
+              example: true
     FirmwareInformation:
       type: object
       properties:
@@ -1386,6 +1761,143 @@ components:
                   example if the device has not been paired with any cloud
                   account yet and there is no pairing request for this device
                   either.
+    HookIdMixin:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Hook ID
+          example: 123
+    BaseHook:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - http
+          description: |
+            Hook type. Possible values are:
+            * `http` - webhook (this includes both HTTP and HTTPS protocols)
+          example: http
+    WebHook:
+      allOf:
+        - $ref: '#/components/schemas/BaseHook'
+        - type: object
+          properties:
+            method:
+              type: string
+              enum:
+                - get
+                - post
+                - put
+              description: HTTP method to use.
+              example: post
+            url:
+              type: string
+              format: url
+              description: Target URL.
+              example: 'http://my.domain.tld/some/endpoint?and=query'
+            timeout:
+              type: integer
+              minimum: 0
+              exclusiveMinimum: true
+              nullable: true
+              description: |
+                Request timeout in milliseconds. The default value is 20000 ms.
+              example: 20000
+            attempts:
+              type: integer
+              minimum: 0
+              exclusiveMinimum: true
+              nullable: true
+              description: |
+                Maximum number of attempts to send the request. The default
+                value is 3.
+              example: 3
+            headers:
+              type: array
+              description: Custom HTTP header fields.
+              example:
+                - name: 'Content-Type'
+                  value: 'application/json'
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Header field name.
+                  value:
+                    type: string
+                    description: Header field value.
+            body:
+              type: string
+              nullable: true
+              description: Base64 encoded request body.
+              example: 'eyJoZWxsbyI6IndvcmxkIn0='
+    NewWebHook:
+      allOf:
+        - $ref: '#/components/schemas/WebHook'
+      required:
+        - type
+        - method
+        - url
+    ExistingWebHook:
+      allOf:
+        - $ref: '#/components/schemas/HookIdMixin'
+        - $ref: '#/components/schemas/WebHook'
+    Hook:
+      oneOf:
+        - $ref: '#/components/schemas/WebHook'
+      discriminator:
+        propertyName: type
+        mapping:
+          http: '#/components/schemas/WebHook'
+    NewHook:
+      oneOf:
+        - $ref: '#/components/schemas/NewWebHook'
+      discriminator:
+        propertyName: type
+        mapping:
+          http: '#/components/schemas/NewWebHook'
+    ExistingHook:
+      oneOf:
+        - $ref: '#/components/schemas/ExistingWebHook'
+      discriminator:
+        propertyName: type
+        mapping:
+          http: '#/components/schemas/ExistingWebHook'
+    MotionDetectionSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates if motion detection is enabled or not.
+          example: true
+        sensitivity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Motion detection sensitivity.
+          example: 50
+        reset_delay:
+          type: integer
+          minimum: 0
+          description: |
+            Minimum amount of time (in milliseconds) without motion, after
+            which the motion detection engine transitions from the _alert_
+            state to the _idle_ state.
+          example: 5000
+        resend_delay:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: |
+            Minimum amount of time (in milliseconds) since the last motion
+            detection event, after which a follow-up event will be generated.
+            If the parameter is `null`, no follow-up events will be generated
+            (i.e. there will be only motion detection events corresponding to
+            a transition from the _idle_ state to the _alert_ state).
+          example: 60000
     BaseBitrateSettings:
       type: object
       properties:
@@ -1733,6 +2245,32 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CloudClientInfo'
+    MotionDetectionSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MotionDetectionSettings'
+    MotionDetectionHookListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ExistingHook'
+    MotionDetectionHookResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExistingHook'
+    MotionDetectionHookCreatedResponse:
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExistingHook'
     StreamListResponse:
       description: OK
       content:
