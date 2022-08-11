@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.5.0'
+  version: '1.6.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -125,19 +125,44 @@ info:
     first user account (see
     [Creating a new user account](#operation/create-user)).
 
-    # Example: accessing a camera in a mobile app
+    # WiFi cameras
+
+    All wifi cameras are in the AP mode by default. Their SSID is concatenation
+    of "goodcam-" prefix and the corresponding MAC address without colons, e.g.
+    "goodcam-112233445566". The prefix is hardcoded into the firmware and it
+    can be changed upon request. The camera should be connected to an existing
+    WiFi network as a part of the initial setup (see the example below).
+
+    # Example: accessing an Ethernet camera in a mobile app
 
     1. Look up all `_goodcam._tcp.local` services using service discovery.
     2. List all instance names in the user interface, e.g.:
-      * My Camera
-      * GoodCam
-      * GoodCam #11
+       * My Camera
+       * GoodCam
+       * GoodCam #11
     3. Allow entering a camera IP address manually (useful in cases when the
        service discovery does not work for some reason).
     4. After the user taps on a camera, perform the initial setup (if needed)
        and log in to the camera (ask the user for credentials).
     5. After successful login, allow changing camera settings, displaying video
        streams, taking snapshots, etc.
+
+    # Example: accessing a WiFi camera in a mobile app
+
+    1. Look up all WiFi Access Points with the "goodcam-" prefix (or your
+       custom prefix) and list them in the user interface.
+    2. After the user taps on a camera, connect to the corresponding Access
+       Point.
+    3. Look up all `_goodcam._tcp.local` services using service discovery.
+       (Note: There will be only one.)
+    4. Perform the initial setup (i.e. create the admin user) and log in to the
+       camera.
+    5. List available WiFi networks and let user pick one.
+    6. Connect the camera to the selected network (i.e. update the camera
+       network settings).
+    7. Reboot the camera.
+    8. Connect the mobile device to the same WiFi network and wait until the
+       camera becomes available.
 servers:
   - url: 'http://0.0.0.0/api/'
 tags:
@@ -805,6 +830,20 @@ paths:
 
         **Fields required for the `dhcp` mode:**
         * `dns_from_dhcp`
+
+        WiFi interfaces also accept the `wifi` field expecting a WiFi settings.
+        A WiFi interface can be configured as a client or an access point. All
+        WiFi interfaces are in the access point mode by default. When in the
+        access point mode, the interface will always use a static IP address
+        (even if configured as a DHCP client) and the access point SSID will be
+        automatically configured to a concatenation of the "goodcam-" prefix
+        (or any other prefix built into the firmware) and MAC address of the
+        network interface (12 hex characters without colons).
+
+        The WiFi client configuration must also include an SSID of the network
+        where the device should connect to. The `passowrd` parameter is
+        optional because not all WiFi networks are necessarily
+        password-protected.
       parameters:
         - name: interface_name
           in: path
@@ -1612,16 +1651,7 @@ components:
           type: string
           description: Name of the device (used as DNS-SD instance name)
           example: My Camera
-    BaseNetworkInterfaceSettingsRead:
-      allOf:
-        - type: object
-          properties:
-            name:
-              type: string
-              description: Name of the network interface
-              example: eth0
-        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsWrite'
-    BaseNetworkInterfaceSettingsWrite:
+    BaseNetworkInterfaceSettings:
       type: object
       properties:
         mac_address:
@@ -1640,6 +1670,24 @@ components:
             * `static` - for static IP address configuration
             * `dhcp` - for DHCP configuration
           example: static
+    BaseNetworkInterfaceSettingsRead:
+      allOf:
+        - type: object
+          properties:
+            name:
+              type: string
+              description: Name of the network interface
+              example: eth0
+            wifi:
+              $ref: '#/components/schemas/WiFiSettingsRead'
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettings'
+    BaseNetworkInterfaceSettingsWrite:
+      allOf:
+        - type: object
+          properties:
+            wifi:
+              $ref: '#/components/schemas/WiFiSettingsWrite'
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettings'
     StaticNetworkInterfaceSettings:
       type: object
       properties:
@@ -1714,6 +1762,56 @@ components:
         mapping:
           static: '#/components/schemas/StaticNetworkInterfaceSettingsWrite'
           dhcp: '#/components/schemas/DHCPNetworkInterfaceSettingsWrite'
+    WiFiSettingsBase:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - ap
+            - client
+          description: WiFi mode
+          example: ap
+    WiFiAccessPointSettings:
+      allOf:
+        - $ref: '#/components/schemas/WiFiSettingsBase'
+    WiFiClientSettingsRead:
+      allOf:
+        - $ref: '#/components/schemas/WiFiSettingsBase'
+        - type: object
+          properties:
+            ssid:
+              type: string
+              description: |
+                SSID of the network where the device should be connected to.
+              example: my-network
+    WiFiClientSettingsWrite:
+      allOf:
+        - $ref: '#/components/schemas/WiFiClientSettingsRead'
+        - type: object
+          properties:
+            password:
+              type: string
+              description: Password for the network (optional).
+              example: secret
+    WiFiSettingsRead:
+      oneOf:
+        - $ref: '#/components/schemas/WiFiAccessPointSettings'
+        - $ref: '#/components/schemas/WiFiClientSettingsRead'
+      discriminator:
+        propertyName: mode
+        mapping:
+          ap: '#/components/schemas/WiFiAccessPointSettings'
+          client: '#/components/schemas/WiFiClientSettingsRead'
+    WiFiSettingsWrite:
+      oneOf:
+        - $ref: '#/components/schemas/WiFiAccessPointSettings'
+        - $ref: '#/components/schemas/WiFiClientSettingsWrite'
+      discriminator:
+        propertyName: mode
+        mapping:
+          ap: '#/components/schemas/WiFiAccessPointSettings'
+          client: '#/components/schemas/WiFiClientSettingsWrite'
     CloudClientSettings:
       type: object
       properties:
