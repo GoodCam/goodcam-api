@@ -255,7 +255,8 @@ tags:
       The cloud client works as a gateway for remote access to the camera. The
       client is responsible for maintaining a permanent connection with a cloud
       service. The connection itself is done using HTTP upgrade and
-      documentation of the corresponding protocol is available upon request.
+      documentation of the corresponding protocol is available
+      <a href="https://github.com/GoodCam/goodcam-api/tree/master/docs/cloud-server.md" target="_blank">here</a>.
       The cloud client supports both HTTP and HTTPS, so it is possible (and
       preferable) to secure the connection using TLS.
 
