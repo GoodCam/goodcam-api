@@ -53,43 +53,6 @@ initiate an HTTP/2 connection "with prior knowledge" as defined in
 The resulting HTTP/2 connection can be then used by the cloud service to send
 requests to the device API.
 
-## Load balancing
-
-In case you need to run multiple instances of your cloud service and you need
-to load balance the GoodCam devices across these instances, you can use
-standard HTTP redirects. In other words, if one of your cloud services receives
-an upgrade request from a GoodCam device and the service is already at its
-capacity, it can redirect the GoodCam device to another service by responding
-with `HTTP 307 Temporary Redirect`, for example:
-```text
-# C -> S:
-GET / HTTP/1.1
-Host: my-cloud-service.com
-Authorization: Basic ZGV2aWNlLWlkOmtleQ==
-Connection: upgrade
-Upgrade: goodcam-device-proxy
-
-# S -> C:
-HTTP/1.1 307 Temporary Redirect
-Location: https://i002.my-cloud-service.com/
-Connection: close
-```
-
-If there is a need to redirect GoodCam devices that are already connected to a
-cloud service, the cloud service can simply close the connection with these
-devices. This will force the devices to reconnect and on reconnect, the devices
-can be easily redirected to another cloud service.
-
-## Connection keep-alive mechanism
-
-After the initial connection is switched to HTTP/2, it is highly recommended
-that both sides of the connection send HTTP/2 PING frames at regular intervals.
-The connection should be considered broken if a PING frame isn't acknowledged
-by the remote peer within a timeout. All GoodCam devices send PING frames every
-10 seconds and will drop the connection if a PING frame isn't acknowledged
-within 20 seconds. This ensures that GoodCam devices will discover broken
-connections in at most 30 seconds.
-
 ## Device authentication and pairing
 
 Careful reader might have noticed one problem already. GoodCam devices are
@@ -150,3 +113,40 @@ The following picture describes the state machine of the cloud client in a
 GoodCam device:
 
 ![state machine](./cloud-client-states.jpg)
+
+## Connection keep-alive mechanism
+
+After the initial connection is switched to HTTP/2, it is highly recommended
+that both sides of the connection send HTTP/2 PING frames at regular intervals.
+The connection should be considered broken if a PING frame isn't acknowledged
+by the remote peer within a timeout. All GoodCam devices send PING frames every
+10 seconds and will drop the connection if a PING frame isn't acknowledged
+within 20 seconds. This ensures that GoodCam devices will discover broken
+connections in at most 30 seconds.
+
+## Load balancing
+
+In case you need to run multiple instances of your cloud service and you need
+to load balance the GoodCam devices across these instances, you can use
+standard HTTP redirects. In other words, if one of your cloud services receives
+an upgrade request from a GoodCam device and the service is already at its
+capacity, it can redirect the GoodCam device to another service by responding
+with `HTTP 307 Temporary Redirect`, for example:
+```text
+# C -> S:
+GET / HTTP/1.1
+Host: my-cloud-service.com
+Authorization: Basic ZGV2aWNlLWlkOmtleQ==
+Connection: upgrade
+Upgrade: goodcam-device-proxy
+
+# S -> C:
+HTTP/1.1 307 Temporary Redirect
+Location: https://i002.my-cloud-service.com/
+Connection: close
+```
+
+If there is a need to redirect GoodCam devices that are already connected to a
+cloud service, the cloud service can simply close the connection with these
+devices. This will force the devices to reconnect and on reconnect, the devices
+can be easily redirected to another cloud service.
