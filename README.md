@@ -26,4 +26,6 @@ application. All the examples are based on the
 The links below explain some common pitfalls that you can face when integrating
 GoodCam APIs into your project.
 
+* [Streaming options](docs/streaming-options.md)
+* [GoodCam cloud protocol](docs/cloud-server.md)
 * [No credentials prompt for cross-origin requests in Safari](docs/cors-credentials-prompt.md)
