@@ -23,7 +23,8 @@ fragmented MP4 and MJPEG streams (see
 [the integration examples](../README.md#integration-examples)). You may find
 out that players for fragmented MP4 and MJPEG streams are easy to implement,
 while WebRTC offers lower latency compared to fragmented MP4. We'd also
-recommend using H.264 instead of MJPEG mainly due to lower bitrate.
+recommend using H.264 instead of MJPEG mainly due to lower bitrate
+requirements.
 
 If you cannot access your cameras locally or you just need to be able to watch
 your cameras remotely (i.e. from a different network), your options will be a
