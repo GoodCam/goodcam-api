@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.6.0'
+  version: '1.7.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -204,6 +204,31 @@ tags:
     x-displayName: OSD
   - name: streaming
     x-displayName: Streaming
+    description: |
+      This section describes configuration of audio/video streams as well as
+      protocols for retrieving the streams.
+
+      Currently there is a support for MJPEG and H.264 video and G.711 and PCM
+      audio. Other codecs may be added in the future. Not all devices support
+      all of the codecs. You can get a list of supported codecs using the API
+      endpoint for [getting stream limits](#operation/get-stream-limits).
+
+      Keep in mind that some encodings are not supported in certain media
+      containers or streaming protocols. This matrix shows which codecs are
+      supported where:
+
+      |      | MJPEG | H.264 | G.711 | PCM |
+      | ---- |:-----:|:-----:|:-----:|:---:|
+      | **RTSP** | | &#x25CF; | &#x25CF; | &#x25CF; |
+      | **WebRTC**<sup>1</sup> | | &#x25CF; | &#x25CF; | &#x25CF; |
+      | **Fragmented MP4 over HTTP** | | &#x25CF; | &#x25CF; | |
+      | **MJPEG over HTTP** | &#x25CF; | | | |
+
+      1. *Even though we technically support these codecs in WebRTC, web
+         browsers are not required to implement all of them. The list of codecs
+         supported by web browsers can be found
+         [here](https://developer.mozilla.org/en-US/docs/Web/Media/Formats/WebRTC_codecs).*
+
   - name: motion-detection
     x-displayName: Motion detection
     description: |
@@ -1249,11 +1274,11 @@ paths:
         Some parameters may be limited to only a certain set of values. See
         the [stream limits](#operation/get-stream-limits) for more information.
 
-        When changing the codec, all video parameters valid for that codec must
-        be present (including `width`, `height` and `fps`). Similarly when
-        changing the bitrate mode, all parameters valid for that bitrate mode
-        must be present. In all other cases only the parameters that are being
-        changed need to be present.
+        When changing the codec, all audio/video parameters valid for that
+        codec must be present (including `width`, `height` and `fps` for
+        video). Similarly when changing the bitrate mode, all parameters valid
+        for that bitrate mode must be present. In all other cases only the
+        parameters that are being changed need to be present.
       parameters:
         - name: stream_name
           in: path
@@ -1290,14 +1315,26 @@ paths:
         - 'HTTP Digest': []
       description: |
         The limits might be codec-dependent (i.e. the endpoint might return
-        different sets of limits based on the current video codec). You can use
-        the `vcodec` query parameter to query limits for a given codec.
+        different sets of limits based on the current audio/video codec). You
+        can use the `acodec` and the `vcodec` query parameters to query limits
+        for a given codec.
       parameters:
         - name: stream_name
           in: path
           required: true
           schema:
             type: string
+        - name: acodec
+          in: query
+          description: |
+            Audio codec for which the limits will be retrieved. If not
+            provided, the current audio codec will be used.
+          schema:
+            type: string
+            enum:
+              - a-law
+              - mu-law
+              - linear-pcm
         - name: vcodec
           in: query
           description: |
@@ -1527,6 +1564,11 @@ components:
               description: |
                 Indicates if the [cloud client](#tag/cloud) is available.
               example: true
+            audio_input:
+              type: boolean
+              description: |
+                Indicates if audio input is available and if it can be
+                configured in the [streaming](#tag/streaming) section.
     FirmwareInformation:
       type: object
       properties:
@@ -2070,6 +2112,102 @@ components:
         mapping:
           vbr: '#/components/schemas/VBRBitrateSettings'
           cbr: '#/components/schemas/CBRBitrateSettings'
+    BaseAudioSettings:
+      type: object
+      properties:
+        source:
+          type: string
+          description: |
+            Audio input source (see [below](#operation/get-stream-limits) to
+            get a list of available audio sources)
+          example: analog-mic
+        sensitivity:
+          oneOf:
+            - type: string
+              enum:
+                - auto
+              description: |
+                Sensitivity will be adjusted automatically based on the ambient
+                noise level.
+            - type: number
+              minimum: 0
+              maximum: 100
+              description: |
+                Sensitivity will be fixed to a given level.
+          description: Audio input sensitivity
+          example: auto
+        noise_reduction:
+          type: object
+          nullable: true
+          properties:
+            strength:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: Noise reduction strength
+              example: 60
+          description: Noise reduction configuration
+        codec:
+          type: string
+          enum:
+            - a-law
+            - mu-law
+            - linear-pcm
+          description: Audio codec
+          example: mu-law
+    ALawAudioSettings:
+      allOf:
+        - $ref: '#/components/schemas/BaseAudioSettings'
+    MuLawAudioSettings:
+      allOf:
+        - $ref: '#/components/schemas/BaseAudioSettings'
+    PCMAudioSettings:
+      allOf:
+        - $ref: '#/components/schemas/BaseAudioSettings'
+        - type: object
+          properties:
+            channels:
+              type: number
+              minimum: 1
+              description: |
+                Number of audio channels (see
+                [below](#operation/get-stream-limits) for the limits)
+              example: 1
+            sample_rate:
+              type: number
+              description: |
+                Number of audio samples per second (per channel; see
+                [below](#operation/get-stream-limits) for the limits)
+              example: 48000
+            sample_format:
+              type: string
+              enum:
+                - U8
+                - S8
+                - U16
+                - S16
+              description: |
+                Audio sample format (see [below](#operation/get-stream-limits)
+                to get a list of supported sample formats)
+
+                Possible values are:
+                * `U8` - 8-bit long unsigned integer
+                * `S8` - 8-bit long signed integer
+                * `U16` - 16-bit long unsigned integer
+                * `S16` - 16-bit long signed integer
+              example: S16
+    AudioSettings:
+      nullable: true
+      oneOf:
+        - $ref: '#/components/schemas/ALawAudioSettings'
+        - $ref: '#/components/schemas/MuLawAudioSettings'
+        - $ref: '#/components/schemas/PCMAudioSettings'
+      discriminator:
+        propertyName: codec
+        mapping:
+          a-law: '#/components/schemas/ALawAudioSettings'
+          mu-law: '#/components/schemas/MuLawAudioSettings'
+          linear-pcm: '#/components/schemas/PCMAudioSettings'
     BaseVideoSettings:
       type: object
       properties:
@@ -2142,6 +2280,8 @@ components:
     StreamSettingsRead:
       type: object
       properties:
+        audio:
+          $ref: '#/components/schemas/AudioSettings'
         video:
           $ref: '#/components/schemas/VideoSettings'
     StreamSettingsWrite:
@@ -2192,6 +2332,66 @@ components:
     StreamLimits:
       type: object
       properties:
+        audio:
+          type: object
+          nullable: true
+          description: |
+            Limits for the audio parameters
+
+            This property will not be present if the firmware does not support
+            audio-input (see
+            [getting basic device info](#operation/get-basic-info) for more
+            information).
+          properties:
+            sources:
+              type: array
+              description: A list of valid input sources
+              items:
+                type: string
+              example:
+                - analog-mic
+            valid_codecs:
+              type: array
+              description: |
+                A list of valid audio codecs (other codecs will be rejected).
+                If the field isn't present, all audio codecs will be accepted.
+              items:
+                type: string
+                enum:
+                  - a-law
+                  - mu-law
+                  - linear-pcm
+              example:
+                - a-law
+                - mu-law
+                - linear-pcm
+            sample_rates:
+              type: array
+              description: A list of valid sample rates
+              items:
+                type: number
+              example:
+                - 8000
+                - 16000
+                - 48000
+            sample_formats:
+              type: array
+              description: A list of valid sample formats
+              items:
+                type: string
+                enum:
+                  - U8
+                  - S8
+                  - U16
+                  - S16
+              example:
+                - S16
+            max_channels:
+              type: number
+              minimum: 1
+              description: |
+                Maximum number of audio channels supported by the input source.
+              example: 1
         video:
           type: object
           description: Limits for the video parameters
