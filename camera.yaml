@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.7.0'
+  version: '1.8.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -241,21 +241,23 @@ tags:
       continuous stream of JSON objects, each describing a single evaluation
       (see [Getting motion detection metadata stream](#operation/motion-detection-stream) for more info).
 
-      The motion detection engine recognizes internally two states:
+      The motion detection engine recognizes internally two states for every
+      configured hook:
       * idle
       * alert
 
-      By default the engine is in the _idle_ state. If there is a motion, the
-      engine immediately transitions to the _alert_ state. If there is no
+      By default, each hook is in the _idle_ state. If there is a motion, the
+      hook immediately transitions to the _alert_ state. If there is no
       motion for at least a given amount of time (this can be configured using
-      the `reset_delay` parameter), the engine transitions back to the _idle_
+      the `reset_delay` parameter), the hook transitions back to the _idle_
       state.
 
-      Whenever the engine transitions to the _alert_ state, a new motion
-      detection event is generated. The event is then sent to given hooks (see
-      below). In situations when the engine would stay in the _alert_ state for
-      a long time, follow-up events can be generated. The delay until the next
-      follow-up event can be configured using the `resend_delay` parameter.
+      Whenever a hook transitions to the _alert_ state, a new motion detection
+      event is generated (unless delayed using the `trigger_delay` parameter).
+      The event is then sent to the hook target (see below). In situations when
+      the hook would stay in the _alert_ state for a long time, follow-up
+      events can be generated. The delay until the next follow-up event can be
+      configured using the `resend_delay` parameter.
 
       ### For webhooks
 
@@ -264,10 +266,10 @@ tags:
       following properties:
 
       * `alert_id` - Sequential ID of the motion detection alert. The ID is
-        incremented on each transition of the motion detection engine from
-        the _idle_ state to the _alert_ state. The ID will be reset to zero on
-        each restart of the motion detection engine. This includes camera
-        reboots and changes of the motion detection settings.
+        incremented on each transition of the hook from the _idle_ state to the
+        _alert_ state. The ID will be reset to zero on each restart of the
+        motion detection engine. This includes camera reboots and changes of
+        the motion detection settings.
       * `event_id` - Sequential ID indicating how many events with this alert
         ID have been already generated. The first event will have its event
         ID set to zero. Each follow-up event (if configured) will then have
@@ -1912,6 +1914,33 @@ components:
     BaseHook:
       type: object
       properties:
+        name:
+          type: string
+          description: Hook name
+          example: my-hook
+        trigger_delay:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: |
+            Overrides the default motion detection `trigger_delay` for this
+            hook.
+          example: 20000
+        reset_delay:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: |
+            Overrides the default motion detection `reset_delay` for this hook.
+          example: null
+        resend_delay:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: |
+            Overrides the default motion detection `resend_delay` for this
+            hook.
+          example: null
         type:
           type: string
           enum:
@@ -2020,6 +2049,36 @@ components:
           maximum: 100
           description: Motion detection sensitivity.
           example: 50
+        debug:
+          type: boolean
+          description: |
+            Indicates if the debug mode is enabled or not. In debug mode, the
+            motion detection mask and bounding boxes for areas with detected
+            motion are rendered into the video.
+          example: false
+        mask:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+          description: |
+            Mask definition that will prevent motion detection in certain areas
+            of the image. The mask format is the same as the one used for the
+            [privacy mask](#tag/privacy-mask).
+          example:
+            - [0.1, 0.1, 0.2, 0.2, 0.3, 0.1]
+        trigger_delay:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: |
+            Minimum amount of time (in milliseconds) in the _alert_ state
+            before the first motion detection event is generated. If set
+            to `null`, the first motion detection event is generated
+            immediately when transiting from the _idle_ state to the _alert_
+            state.
+          example: null
         reset_delay:
           type: integer
           minimum: 0
@@ -2027,7 +2086,7 @@ components:
             Minimum amount of time (in milliseconds) without motion, after
             which the motion detection engine transitions from the _alert_
             state to the _idle_ state.
-          example: 5000
+          example: 10000
         resend_delay:
           type: integer
           nullable: true
