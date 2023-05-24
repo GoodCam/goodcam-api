@@ -39,6 +39,7 @@
             object-fit: contain;
             object-position: left center;
             background: black;
+            display: block;
         }
 
         .video-wrapper .overlay {
@@ -48,6 +49,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            z-index: 200;
         }
 
         .video-wrapper .overlay .play-button {
@@ -75,7 +77,6 @@
         .hidden {
             display: none;
         }
-
     </style>
 </head>
 <body>
@@ -139,23 +140,23 @@
                     </svg>
                 </button>
             </div>
-            <video id="my-video" muted></video>
+            <video id="my-video"></video>
         </div>
     </div>
 
     <!-- All the JS goes here: -->
     <script src="js/webrtc-player.js"></script>
     <script type="module">
-        (function() {
+        (() => {
             // this is a hack to force Safari (and other WebKit based browsers)
             // to ask for credentials even for cross-origin requests
-            const iframe = document.createElement('iframe');
-
-            iframe.style.display = 'none';
-
-            document.body.appendChild(iframe);
-
             async function getCredentials(proto, addr, query) {
+                const iframe = document.createElement('iframe');
+
+                iframe.style.display = 'none';
+
+                document.body.appendChild(iframe);
+
                 if (!query) {
                     query = new URLSearchParams();
                 }
@@ -179,8 +180,62 @@
                 });
 
                 await credentials;
+
+                iframe.remove();
             }
 
+            async function customFetch(url, options) {
+                const abort = new AbortController();
+
+                setTimeout(() => {
+                    abort.abort("connection timeout");
+                }, options.timeout || 5000);
+
+                delete options.timeout;
+
+                options.signal = abort.signal;
+
+                const response = await fetch(url, options);
+
+                if (!response.ok) {
+                    throw new Error("request error");
+                }
+
+                return await response.json();
+            }
+
+            async function fetchFromCloud(key, endpoint, timeout) {
+                return await customFetch(`https://cloud.goodcam.io/api/v1${endpoint}`, {
+                    credentials: 'omit',
+                    headers: {
+                        'X-GoodCam-ApiKey': key,
+                    },
+                    timeout,
+                });
+            }
+
+            async function fetchFromCamera(proto, addr, endpoint, query, timeout) {
+                if (!query) {
+                    query = new URLSearchParams();
+                }
+
+                let url = `${proto}//${addr}/api/v1${endpoint}?${query.toString()}`;
+
+                return await customFetch(url, {
+                    credentials: 'include',
+                });
+            }
+
+            window.GC = {
+                getCredentials,
+                customFetch,
+                fetchFromCloud,
+                fetchFromCamera,
+            };
+        })();
+    </script>
+    <script type="module">
+        (function() {
             // add your STUN servers here
             const stunServers = [
                 'stun.goodcam.io:3478',
@@ -225,47 +280,6 @@
             ipAddress.value = settings['ip-address'];
             stream.value = settings['stream'];
 
-            async function customFetch(url, options) {
-                const abort = new AbortController();
-
-                setTimeout(() => {
-                    abort.abort("connection timeout");
-                }, options.timeout || 5000);
-
-                delete options.timeout;
-
-                options.signal = abort.signal;
-
-                const response = await fetch(url, options);
-
-                if (!response.ok) {
-                    throw new Error("request error");
-                }
-
-                return await response.json();
-            }
-
-            async function fetchFromCloud(key, endpoint, timeout) {
-                return await customFetch(`https://cloud.goodcam.io/api/v1${endpoint}`, {
-                    credentials: 'omit',
-                    headers: {
-                        'X-GoodCam-ApiKey': key,
-                    },
-                });
-            }
-
-            async function fetchFromCamera(proto, addr, endpoint, query, timeout) {
-                if (!query) {
-                    query = new URLSearchParams();
-                }
-
-                let url = `${proto}//${addr}/api/v1${endpoint}?${query.toString()}`;
-
-                return await customFetch(url, {
-                    credentials: 'include',
-                });
-            }
-
             async function getStreamUrl() {
                 let protocol;
                 let address;
@@ -275,7 +289,9 @@
                     protocol = window.location.protocol;
                     address = ipAddress.value;
                 } else {
-                    let device = await fetchFromCloud(apiKey.value, `/camera/${deviceId.value}/`);
+                    let device = await GC.fetchFromCloud(apiKey.value, `/camera/${deviceId.value}/`);
+
+                    device.url = 'http://localhost:8888/';
 
                     let proxy = new URL(device.url);
 
@@ -291,11 +307,11 @@
                     protocol = 'http:';
                 }
 
-                await getCredentials(protocol, address, query);
+                await GC.getCredentials(protocol, address, query);
 
-                let users = await fetchFromCamera(protocol, address, '/users', query);
+                let users = await GC.fetchFromCamera(protocol, address, '/users', query);
                 let user = encodeURIComponent(users[0]['username']);
-                let token = await fetchFromCamera(protocol, address, `/users/${user}/token`, query);
+                let token = await GC.fetchFromCamera(protocol, address, `/users/${user}/token`, query);
 
                 query.set('x-goodcam-devicetoken', token['token']);
 

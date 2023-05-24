@@ -22,6 +22,7 @@ class StreamingSession {
 
         this.connection = null;
         this.ws = null;
+        this.tracks = [];
     }
 
     /**
@@ -39,14 +40,21 @@ class StreamingSession {
             })),
         });
 
-        this.connection.onicecandidate = (e) => this.sendLocalCandidate(e.candidate);
-        this.connection.ontrack = async (e) => {
-            this.videoElem.srcObject = new MediaStream([e.track]);
+        this.tracks = [];
 
-            try {
-                await this.videoElem.play();
-            } catch (e) {
-                this.playButtonElem.classList.remove('hidden');
+        this.connection.onicecandidate = (e) => this.sendLocalCandidate(e.candidate);
+        this.connection.ontrack = (e) => {
+            this.tracks.push(e.track);
+        };
+        this.connection.oniceconnectionstatechange = async (e) => {
+            if (e.target.iceConnectionState === 'connected') {
+                this.videoElem.srcObject = new MediaStream(this.tracks);
+
+                try {
+                    await this.videoElem.play();
+                } catch (e) {
+                    this.playButtonElem.classList.remove('hidden');
+                }
             }
         };
 
