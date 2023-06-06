@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.8.0'
+  version: '1.9.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -1337,6 +1337,7 @@ paths:
               - a-law
               - mu-law
               - linear-pcm
+              - opus
         - name: vcodec
           in: query
           description: |
@@ -2212,7 +2213,10 @@ components:
             - a-law
             - mu-law
             - linear-pcm
-          description: Audio codec
+            - opus
+          description: |
+            Audio codec (see [below](#operation/get-stream-limits) for the
+            limits)
           example: mu-law
     ALawAudioSettings:
       allOf:
@@ -2255,18 +2259,45 @@ components:
                 * `U16` - 16-bit long unsigned integer
                 * `S16` - 16-bit long signed integer
               example: S16
+    OpusAudioSettings:
+      allOf:
+        - $ref: '#/components/schemas/BaseAudioSettings'
+        - type: object
+          properties:
+            channels:
+              type: number
+              minimum: 1
+              description: |
+                Number of audio channels (see
+                [below](#operation/get-stream-limits) for the limits)
+              example: 1
+            sample_rate:
+              type: number
+              description: |
+                Number of audio samples per second (per channel; see
+                [below](#operation/get-stream-limits) for the limits)
+              example: 16000
+            bitrate:
+              type: number
+              minimum: 1
+              description: |
+                Target bitrate in kbps (see
+                [below](#operation/get-stream-limits) for the limits)
+              example: 20
     AudioSettings:
       nullable: true
       oneOf:
         - $ref: '#/components/schemas/ALawAudioSettings'
         - $ref: '#/components/schemas/MuLawAudioSettings'
         - $ref: '#/components/schemas/PCMAudioSettings'
+        - $ref: '#/components/schemas/OpusAudioSettings'
       discriminator:
         propertyName: codec
         mapping:
           a-law: '#/components/schemas/ALawAudioSettings'
           mu-law: '#/components/schemas/MuLawAudioSettings'
           linear-pcm: '#/components/schemas/PCMAudioSettings'
+          opus: '#/components/schemas/OpusAudioSettings'
     BaseVideoSettings:
       type: object
       properties:
@@ -2420,6 +2451,7 @@ components:
                   - a-law
                   - mu-law
                   - linear-pcm
+                  - opus
               example:
                 - a-law
                 - mu-law
@@ -2451,6 +2483,11 @@ components:
               description: |
                 Maximum number of audio channels supported by the input source.
               example: 1
+            max_bitrate:
+              type: number
+              minimum: 1
+              description: Maximum acceptable bitrate in kbps.
+              example: 64
         video:
           type: object
           description: Limits for the video parameters
