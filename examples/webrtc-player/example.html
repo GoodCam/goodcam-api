@@ -291,8 +291,6 @@
                 } else {
                     let device = await GC.fetchFromCloud(apiKey.value, `/camera/${deviceId.value}/`);
 
-                    device.url = 'http://localhost:8888/';
-
                     let proxy = new URL(device.url);
 
                     address = proxy.host;
