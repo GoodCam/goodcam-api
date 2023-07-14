@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.9.0'
+  version: '1.10.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -311,6 +311,17 @@ tags:
       `https://proxy.goodcam.io:8888` in order to connect to the GoodCam Cloud
       service. Different URLs may be used in order to connect the camera to
       another cloud service provider._
+  - name: gpio
+    x-displayName: GPIO
+    description: |
+      The GPIO subsystem provides an API for controlling digital input/output
+      pins. Input pins are read-only and you can only retrieve their value.
+      Output pins can be either set to a given fixed value or you can configure
+      a custom sequence of actions that will drive the output pins. You can
+      also group several output pins together and control the whole group.
+
+      The endpoints in this section are available only if the `gpio`
+      [feature](#operation/get-basic-info) is indicated.
 paths:
   '/v1/':
     get:
@@ -1500,6 +1511,238 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           description: Not Found
+  '/v1/gpio/pins/':
+    get:
+      operationId: 'get-gpio-pins'
+      tags:
+        - gpio
+      summary: Listing GPIO pins
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/PinInfoListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/gpio/pins/{pin}/':
+    get:
+      operationId: 'get-gpio-pin'
+      tags:
+        - gpio
+      summary: Getting GPIO pin details
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: pin
+          in: path
+          required: true
+          description: Pin identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/PinInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-gpio-pin'
+      tags:
+        - gpio
+      summary: Updating GPIO pin settings
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: pin
+          in: path
+          required: true
+          description: Pin identifier
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutputPinSettings'
+            example:
+              config:
+                type: custom
+                actions:
+                  - action: set
+                    value: false
+                  - action: delay
+                    delay: 300
+                  - action: set
+                    value: true
+                  - action: delay
+                    delay: 300
+                repeat: true
+                timeout: 300000
+                final_value: false
+      responses:
+        '200':
+          $ref: '#/components/responses/PinInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/gpio/groups/':
+    get:
+      operationId: 'get-gpio-pin-groups'
+      tags:
+        - gpio
+      summary: Listing GPIO pin groups
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/PinGroupInfoListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'create-gpio-pin-group'
+      tags:
+        - gpio
+      summary: Creating a new GPIO pin group
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: object
+                  properties:
+                    id:
+                      type: string
+                      description: Pin group identifier
+                      example: two-leds
+                - $ref: '#/components/schemas/PinGroupSettings'
+              required:
+                - id
+                - pins
+                - config
+      responses:
+        '201':
+          $ref: '#/components/responses/PinGroupCreatedResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/gpio/groups/{id}/':
+    get:
+      operationId: 'get-gpio-pin-group'
+      tags:
+        - gpio
+      summary: Getting GPIO pin group details
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Pin group identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/PinGroupInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-gpio-pin-group'
+      tags:
+        - gpio
+      summary: Updating GPIO pin group
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Pin group identifier
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PinGroupSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/PinGroupInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    delete:
+      operationId: 'delete-pin-group'
+      tags:
+        - gpio
+      summary: Deleting GPIO pin group
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Pin group identifier
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
 components:
   schemas:
     BasicInformation:
@@ -1572,6 +1815,10 @@ components:
               description: |
                 Indicates if audio input is available and if it can be
                 configured in the [streaming](#tag/streaming) section.
+            gpio:
+              type: boolean
+              description: |
+                Indicates if the [GPIO subsystem](#tag/gpio) is available.
     FirmwareInformation:
       type: object
       properties:
@@ -2530,6 +2777,411 @@ components:
                 Maximum acceptable bitrate in kbps (it applies to both VBR and
                 CBR)
               example: 100000
+    BasePinAction:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - set
+            - delay
+          description: |
+            Pin action type.
+
+            Possible values are:
+            * `set` - to set a given pin value
+            * `delay` - to wait a given amount of time
+          example: set
+    SetPinValueAction:
+      allOf:
+        - $ref: '#/components/schemas/BasePinAction'
+        - type: object
+          properties:
+            value:
+              type: boolean
+              description: Pin value
+              example: true
+    DelayPinAction:
+      allOf:
+        - $ref: '#/components/schemas/BasePinAction'
+        - type: object
+          properties:
+            delay:
+              type: number
+              minimum: 0
+              description:
+                Amount of time (in milliseconds) to wait before continuing with
+                the next action.
+              example: 100
+    PinAction:
+      oneOf:
+        - $ref: '#/components/schemas/SetPinValueAction'
+        - $ref: '#/components/schemas/DelayPinAction'
+      discriminator:
+        propertyName: action
+        mapping:
+          set: '#/components/schemas/SetPinValueAction'
+          delay: '#/components/schemas/DelayPinAction'
+    BasePinConfig:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - fixed
+            - custom
+          description: |
+            Pin configuration variant.
+
+            Possible values are:
+            * `fixed` - fixed value
+            * `custom` - sequence of custom actions
+          example: fixed
+    FixedPinConfig:
+      allOf:
+        - $ref: '#/components/schemas/BasePinConfig'
+        - type: object
+          properties:
+            value:
+              type: boolean
+              description: Pin value
+              example: true
+    CustomPinConfig:
+      allOf:
+        - $ref: '#/components/schemas/BasePinConfig'
+        - type: object
+          properties:
+            actions:
+              type: array
+              items:
+                $ref: '#/components/schemas/PinAction'
+              description: Custom actions
+              example:
+                - action: set
+                  value: false
+                - action: delay
+                  delay: 300
+                - action: set
+                  value: true
+                - action: delay
+                  delay: 300
+            repeat:
+              type: boolean
+              description: If true, the actions will be repeated.
+              example: true
+            timeout:
+              type: number
+              minimum: 0
+              nullable: true
+              description: |
+                Optional timeout in milliseconds.
+
+                The actions will be stopped after a given amount of time.
+              example: 300000
+            initial_value:
+              type: boolean
+              nullable: true
+              description: |
+                Initial pin value to be set before starting the actions.
+              example: null
+            final_value:
+              type: boolean
+              nullable: true
+              description: |
+                Final value to be set after performing all the actions or after
+                the timeout.
+              example: false
+    PinConfig:
+      oneOf:
+        - $ref: '#/components/schemas/FixedPinConfig'
+        - $ref: '#/components/schemas/CustomPinConfig'
+      discriminator:
+        propertyName: type
+        mapping:
+          fixed: '#/components/schemas/FixedPinConfig'
+          custom: '#/components/schemas/CustomPinConfig'
+      description: Pin configuration
+    OutputPinSettings:
+      type: object
+      properties:
+        config:
+          $ref: '#/components/schemas/PinConfig'
+    BasePinInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Pin identifier
+          example: red-led
+        description:
+          type: string
+          description: Pin description
+          example: Red LED
+        type:
+          type: string
+          enum:
+            - in
+            - out
+          description: |
+            Pin type.
+
+            Possible values are:
+            * `in` - input pin
+            * `out` - output pin
+          example: out
+        value:
+          type: boolean
+          description: Current pin value
+          example: true
+    InputPinInfo:
+      allOf:
+        - $ref: '#/components/schemas/BasePinInfo'
+    OutputPinInfo:
+      allOf:
+        - $ref: '#/components/schemas/BasePinInfo'
+        - $ref: '#/components/schemas/OutputPinSettings'
+    PinInfo:
+      oneOf:
+        - $ref: '#/components/schemas/InputPinInfo'
+        - $ref: '#/components/schemas/OutputPinInfo'
+      discriminator:
+        propertyName: type
+        mapping:
+          in: '#/components/schemas/InputPinInfo'
+          out: '#/components/schemas/OutputPinInfo'
+      example:
+        id: red-led
+        description: Red LED
+        type: out
+        config:
+          type: custom
+          actions:
+            - action: set
+              value: false
+            - action: delay
+              delay: 300
+            - action: set
+              value: true
+            - action: delay
+              delay: 300
+          repeat: true
+          timeout: 300000
+          final_value: false
+        value: true
+    PinInfoList:
+      type: array
+      items:
+        $ref: '#/components/schemas/PinInfo'
+    BasePinGroupAction:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - set
+            - delay
+          description: |
+            Pin action type.
+
+            Possible values are:
+            * `set` - to set given pin values
+            * `delay` - to wait a given amount of time
+          example: set
+    SetPinGroupValuesAction:
+      allOf:
+        - $ref: '#/components/schemas/BasePinGroupAction'
+        - type: object
+          properties:
+            values:
+              type: object
+              description: |
+                Pin values.
+
+                Each property can be a pin identifier and all values must be
+                booleans indicating the desired pin values. Only pin
+                identifiers belonging to the group are allowed here.
+              example:
+                red-led: true
+                blue-led: false
+    DelayPinGroupAction:
+      allOf:
+        - $ref: '#/components/schemas/BasePinGroupAction'
+        - type: object
+          properties:
+            delay:
+              type: number
+              minimum: 0
+              description:
+                Amount of time (in milliseconds) to wait before continuing with
+                the next action.
+              example: 100
+    PinGroupAction:
+      oneOf:
+        - $ref: '#/components/schemas/SetPinGroupValuesAction'
+        - $ref: '#/components/schemas/DelayPinGroupAction'
+      discriminator:
+        propertyName: action
+        mapping:
+          set: '#/components/schemas/SetPinGroupValuesAction'
+          delay: '#/components/schemas/DelayPinGroupAction'
+    BasePinGroupConfig:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - fixed
+            - custom
+          description: |
+            Pin group configuration variant.
+
+            Possible values are:
+            * `fixed` - fixed values
+            * `custom` - sequence of custom actions
+          example: fixed
+    FixedPinGroupConfig:
+      allOf:
+        - $ref: '#/components/schemas/BasePinGroupConfig'
+        - type: object
+          properties:
+            values:
+              type: object
+              description: |
+                Pin values.
+
+                Each property can be a pin identifier and all values must be
+                booleans indicating the desired pin values. Only pin
+                identifiers belonging to the group are allowed here.
+              example:
+                blue-led: false
+                red-led: true
+    CustomPinGroupConfig:
+      allOf:
+        - $ref: '#/components/schemas/BasePinGroupConfig'
+        - type: object
+          properties:
+            actions:
+              type: array
+              items:
+                $ref: '#/components/schemas/PinGroupAction'
+              description: Custom actions
+              example:
+                - action: set
+                  values:
+                    blue-led: true
+                    red-led: false
+                - action: delay
+                  delay: 300
+                - action: set
+                  values:
+                    blue-led: false
+                    red-led: true
+                - action: delay
+                  delay: 300
+            repeat:
+              type: boolean
+              description: If true, the actions will be repeated.
+              example: true
+            timeout:
+              type: number
+              minimum: 0
+              nullable: true
+              description: |
+                Optional timeout in milliseconds.
+
+                The actions will be stopped after a given amount of time.
+              example: 300000
+            initial_values:
+              type: object
+              nullable: true
+              description: |
+                Initial pin values to be set before starting the actions.
+
+                Each property can be a pin identifier and all values must be
+                booleans indicating the desired pin values. Only pin
+                identifiers belonging to the group are allowed here.
+              example: null
+            final_values:
+              type: object
+              nullable: true
+              description: |
+                Final pin values to be set after performing all actions or
+                after the timeout.
+
+                Each property can be a pin identifier and all values must be
+                booleans indicating the desired pin values. Only pin
+                identifiers belonging to the group are allowed here.
+              example: null
+    PinGroupConfig:
+      oneOf:
+        - $ref: '#/components/schemas/FixedPinGroupConfig'
+        - $ref: '#/components/schemas/CustomPinGroupConfig'
+      discriminator:
+        propertyName: type
+        mapping:
+          fixed: '#/components/schemas/FixedPinGroupConfig'
+          custom: '#/components/schemas/CustomPinGroupConfig'
+      description: Pin group configuration
+      example:
+        type: custom
+        actions:
+          - action: set
+            values:
+              blue-led: true
+              red-led: false
+          - action: delay
+            delay: 300
+          - action: set
+            values:
+              blue-led: false
+              red-led: true
+          - action: delay
+            delay: 300
+        repeat: true
+        timeout: 300000
+        final_values:
+          blue-led: false
+          red-led: false
+    PinGroupSettings:
+      type: object
+      properties:
+        pins:
+          type: array
+          items:
+            type: string
+          description: |
+            A list of identifiers of output pins belonging to this group
+          example:
+            - blue-led
+            - red-led
+        config:
+          $ref: '#/components/schemas/PinGroupConfig'
+    PinGroupInfo:
+      allOf:
+        - type: object
+          properties:
+            id:
+              type: string
+              description: Pin group identifier
+              example: two-leds
+        - $ref: '#/components/schemas/PinGroupSettings'
+        - type: object
+          properties:
+            values:
+              type: object
+              description: |
+                Current pin values.
+
+                Each property will be a pin identifier belonging to this group
+                and all values will be booleans indicating the current pin
+                value.
+              example:
+                blue-led: false
+                red-led: true
+    PinGroupInfoList:
+      type: array
+      items:
+        $ref: '#/components/schemas/PinGroupInfo'
   responses:
     Uninitialized:
       description: Uninitialized device
@@ -2686,6 +3338,36 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/StreamLimits'
+    PinInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinInfo'
+    PinInfoListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinInfoList'
+    PinGroupCreatedResponse:
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinGroupInfo'
+    PinGroupInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinGroupInfo'
+    PinGroupInfoListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinGroupInfoList'
   securitySchemes:
     'HTTP Digest':
       type: http
