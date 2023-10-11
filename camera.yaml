@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.10.0'
+  version: '1.11.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -172,6 +172,8 @@ tags:
     x-displayName: User management
   - name: network
     x-displayName: Network settings
+  - name: storage
+    x-displayName: Storage
   - name: exposure
     x-displayName: Exposure
   - name: privacy-mask
@@ -1743,6 +1745,96 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           description: Not Found
+  '/v1/storage/':
+    get:
+      operationId: 'list-storages'
+      tags:
+        - storage
+      summary: Listing available storages
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/StorageListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/storage/sd-card/':
+    get:
+      operationId: 'list-sd-cards'
+      tags:
+        - storage
+      summary: Listing available SD cards
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/SDCardsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/storage/sd-card/{id}/':
+    get:
+      operationId: 'get-sd-card-info'
+      tags:
+        - storage
+      summary: Getting SD card info
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: SD card identifier
+          schema:
+            type: integer
+      responses:
+        '200':
+          $ref: '#/components/responses/SDCardResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/storage/sd-card/{id}/format/':
+    post:
+      operationId: 'format-sd-card'
+      tags:
+        - storage
+      summary: Formatting SD card
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: SD card identifier
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
 components:
   schemas:
     BasicInformation:
@@ -1765,6 +1857,11 @@ components:
                 Indicates if the OSD feature and the
                 [corresponding API endpoints](#tag/osd) are available.
               example: true
+            storage:
+              type: boolean
+              description: |
+                Indicates if the storage support and the
+                [corresponding API endpoints](#tag/storage) are available.
             fragmented_mp4:
               type: boolean
               description: |
@@ -3182,6 +3279,45 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/PinGroupInfo'
+    BaseStorageInfo:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - sd-card
+          description: |
+            Storage type.
+
+            Possible values are:
+            * `sd-card` - SD card
+          example: sd-card
+    SDCardStorageInfo:
+      allOf:
+        - $ref: '#/components/schemas/BaseStorageInfo'
+        - $ref: '#/components/schemas/SDCardInfo'
+    StorageInfo:
+      oneOf:
+        - $ref: '#/components/schemas/SDCardStorageInfo'
+      discriminator:
+        propertyName: type
+        mapping:
+          sd-card: '#/components/schemas/SDCardStorageInfo'
+    SDCardInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: SD card identifier
+          example: 0
+        capacity:
+          type: integer
+          description: SD card capacity in bytes
+          example: 34359738368
+        available:
+          type: integer
+          description: The amount of available space in bytes
+          example: 17179869184
   responses:
     Uninitialized:
       description: Uninitialized device
@@ -3368,6 +3504,28 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/PinGroupInfoList'
+    StorageListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/StorageInfo'
+    SDCardsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/SDCardInfo'
+    SDCardResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SDCardInfo'
   securitySchemes:
     'HTTP Digest':
       type: http
