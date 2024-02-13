@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.11.0'
+  version: '1.12.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -118,8 +118,11 @@ info:
     # Initial setup
 
     When a GoodCam device hasn't been set up before (or after factory reset),
-    all API endpoints will be redirecting to `/v1/users/` indicating that there
-    are no user accounts and the initial setup should be performed.
+    the `initialized` property returned by the
+    [public info endpoint](#tag/basic/operation/get-public-info) will be set to
+    `false` and all other API endpoints will be redirecting to `/v1/users/`
+    indicating that there are no user accounts and the initial setup should be
+    performed.
 
     The setup itself is simple. The API client is only required to create the
     first user account (see
@@ -325,6 +328,15 @@ tags:
       The endpoints in this section are available only if the `gpio`
       [feature](#operation/get-basic-info) is indicated.
 paths:
+  '/':
+    get:
+      operationId: 'get-public-info'
+      tags:
+        - basic
+      summary: Getting public info
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicInformationResponse'
   '/v1/':
     get:
       operationId: 'get-basic-info'
@@ -1837,6 +1849,80 @@ paths:
           description: Not Found
 components:
   schemas:
+    PublicInformation:
+      type: object
+      properties:
+        device:
+          $ref: '#/components/schemas/PublicDeviceInformation'
+        initialized:
+          type: boolean
+          description: |
+            `false` indicates that the [Initial setup](#section/Initial-setup) is required.
+          example: true
+        apis:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicApiInformation'
+      example:
+        device:
+          board: acbd18db4cc2f85cedef654fccc4a4d8
+        initialized: false
+        apis:
+          - type: goodcam
+            transport: tcp
+            port: 80
+            root: '/api/v1/'
+            version: 1
+    PublicDeviceInformation:
+      type: object
+      properties:
+        board:
+          type: string
+          description: Hardware family identifier
+          example: acbd18db4cc2f85cedef654fccc4a4d8
+    BasePublicApiInformation:
+      type: object
+      properties:
+        type:
+          type: string
+          description: |
+            API kind. Possible values are:
+            * `goodcam` - GoodCam API as described in this documentation
+          enum:
+            - goodcam
+          example: goodcam
+    PublicGoodCamApiInformation:
+      allOf:
+        - $ref: '#/components/schemas/BasePublicApiInformation'
+        - type: object
+          properties:
+            transport:
+              type: string
+              description: |
+                Transport protocol. Possible values are:
+                * `tcp` - TCP protocol
+              enum:
+                - tcp
+              example: tcp
+            port:
+              type: integer
+              description: TCP port
+              example: 80
+            root:
+              type: string
+              description: API root
+              example: '/api/v1/'
+            version:
+              type: integer
+              description: API major version
+              example: 1
+    PublicApiInformation:
+      oneOf:
+        - $ref: '#/components/schemas/PublicGoodCamApiInformation'
+      discriminator:
+        propertyName: type
+        mapping:
+          goodcam: '#/components/schemas/PublicGoodCamApiInformation'
     BasicInformation:
       type: object
       properties:
@@ -3335,6 +3421,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorDescription'
+    PublicInformationResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicInformation'
     BasicInformationResponse:
       description: OK
       content:
