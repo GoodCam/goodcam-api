@@ -10,7 +10,7 @@ signaling protocols like SIP may be available in the future.
 The signaling protocol is available at:
 
 ```
-ws://DEVICE_ADDR/v1/streams/STREAM_NAME/web-rtc/
+ws://DEVICE_ADDR/api/v1/streams/STREAM_NAME/web-rtc/
 ```
 
 The protocol is optionally identified by a `gcsp` token in the

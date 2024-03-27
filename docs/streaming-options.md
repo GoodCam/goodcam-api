@@ -7,8 +7,8 @@ application. H.264 video can be delivered via:
 * WebRTC
 * Fragmented MP4 over HTTP
 
-MJPEG video can be delivered only via HTTP in form of a multipart body (one
-frame per multipart entity).
+MJPEG video can be delivered either via fragmented MP4 over HTTP or via HTTP in
+form of a multipart body (one frame per multipart entity).
 
 Choosing the right streaming format might save you a lot of trouble. This
 document lists several common use cases which should give you a better idea
@@ -19,7 +19,7 @@ which option is the best for you.
 Modern web browsers can play both H.264 and MJPEG video. The only thing that
 isn't supported is the RTSP protocol. If you can access your cameras directly
 (e.g. you are in the same local network), you can choose freely between WebRTC,
-fragmented MP4 and MJPEG streams (see
+fragmented MP4 and multipart MJPEG streams (see
 [the integration examples](../README.md#integration-examples)). You may find
 out that players for fragmented MP4 and MJPEG streams are easy to implement,
 while WebRTC offers lower latency compared to fragmented MP4. We'd also
@@ -55,7 +55,7 @@ encryption and it should not be used for remote video access unless you can
 provide an additional layer of security (e.g. using a tunneled connection).
 
 How difficult it will be to use WebRTC in a desktop/mobile app will depend on
-your platform of choice (i.e. programing language, target operating system,
+your platform of choice (i.e. programming language, target operating system,
 etc.). There are some libraries that support WebRTC but it may be difficult to
 find a video player that would support WebRTC out of the box. This is mainly
 because you still need to implement the signaling protocol. A good option would

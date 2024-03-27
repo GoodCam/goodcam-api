@@ -1,8 +1,13 @@
 # GoodCam cloud protocol
 
 This document describes how exactly GoodCam devices connect to a cloud service
-and how the cloud service can communicate with connected cameras. This should
-give you enough information to implement your own cloud service if needed.
+and how the cloud service can communicate with connected cameras. It should
+give you enough information to implement your own cloud service if needed. You
+can also use [our library](https://github.com/GoodCam/device-proxy-lib)
+implementing this protocol. The library is written in Rust but offers also a C
+API, so it shouldn't be a big problem to use it wherever needed. There is also
+a [Python wrapper](https://github.com/GoodCam/device-proxy-lib-python) already
+available.
 
 The protocol is relatively simple. GoodCam devices initiate an outgoing
 connection to a given cloud service using HTTP(S) 1.1, requesting a connection
