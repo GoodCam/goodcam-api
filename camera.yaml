@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.12.0'
+  version: '1.13.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -222,18 +222,38 @@ tags:
       containers or streaming protocols. This matrix shows which codecs are
       supported where:
 
-      |      | MJPEG | H.264 | G.711 | PCM |
-      | ---- |:-----:|:-----:|:-----:|:---:|
-      | **RTSP** | | &#x25CF; | &#x25CF; | &#x25CF; |
-      | **WebRTC**<sup>1</sup> | | &#x25CF; | &#x25CF; | &#x25CF; |
-      | **Fragmented MP4 over HTTP** | | &#x25CF; | &#x25CF; | |
-      | **MJPEG over HTTP** | &#x25CF; | | | |
+      |      | MJPEG | H.264 | G.711 | PCM | Opus |
+      | ---- |:-----:|:-----:|:-----:|:---:|:----:|
+      | **RTSP** | | &#x25CF; | &#x25CF; | &#x25CF; | &#x25CF; |
+      | **WebRTC**<sup>1</sup> | | &#x25CF; | &#x25CF; | &#x25CF; | &#x25CF; |
+      | **Fragmented MP4 over HTTP**<sup>2</sup> | &#x25CF; | &#x25CF; | &#x25CF; | &#x25CF; | &#x25CF; |
+      | **MJPEG over HTTP** | &#x25CF; | | | | |
 
       1. *Even though we technically support these codecs in WebRTC, web
          browsers are not required to implement all of them. The list of codecs
          supported by web browsers can be found
          [here](https://developer.mozilla.org/en-US/docs/Web/Media/Formats/WebRTC_codecs).*
+      2. *Please note that not all players, especially web browsers, support
+         all of these codecs in the fragmented MP4 container.*
 
+  - name: recording
+    x-displayName: Recording
+    description: |
+      Each recording, when enabled, corresponds to a single background task
+      responsible for storing video from a given stream into a given storage.
+      The video is being stored in form of short video segments. When the
+      storage gets full, the oldest video segment will be deleted to make space
+      for new video. The endpoints below provide convenient way for accessing
+      the recorded video.
+
+      When recording to an SD card, make sure that the card is formatted before
+      you enable the recording. MBR/DOS format with a single primary partition
+      containing a FAT32 (LBA) file system is required. You can use
+      [the formatting endpoint](#tag/storage/operation/format-sd-card) to
+      format your SD card.
+
+      **IMPORTANT:** Do not move, rename, delete or modify files in the
+      storage! This could easily damage the recording index.
   - name: motion-detection
     x-displayName: Motion detection
     description: |
@@ -1525,6 +1545,298 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           description: Not Found
+  '/v1/recordings/':
+    get:
+      operationId: 'list-recordings'
+      tags:
+        - recording
+      summary: Listing recordings
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'create-recording'
+      tags:
+        - recording
+      summary: Creating a new recording
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/RecordingSettings'
+              required:
+                - enabled
+                - stream
+                - storage
+            example:
+              stream: primary
+              storage:
+                type: sd-card
+                slot: 0
+      responses:
+        '201':
+          $ref: '#/components/responses/RecordingCreatedResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/recordings/{recording_id}/':
+    get:
+      operationId: 'get-recording-details'
+      tags:
+        - recording
+      summary: Getting recording details
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-recording'
+      tags:
+        - recording
+      summary: Changing recording settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordingSettings'
+            example:
+              stream: primary
+              storage:
+                type: sd-card
+                slot: 0
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    delete:
+      operationId: 'delete-recording'
+      tags:
+        - recording
+      summary: Deleting recording
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+
+        **WARNING**: Deleting a recording will also delete the corresponding
+        recorded video!
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/recordings/{recording_id}/timeline/':
+    get:
+      operationId: 'get-recording-timeline'
+      tags:
+        - recording
+      summary: Getting recording timeline
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: The earliest record to return
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: The latest record to return
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 1000
+          description: Maximum number of time intervals to return
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+
+        The endpoint will return requested portion of the recording timeline as
+        a list of consecutive distinct time intervals where continuous records
+        are available. Start of the first time interval will be greater than or
+        equal to the `start` parameter (if provided) or the start of the first
+        available record in the storage. End of the last interval will be lower
+        than or equal to the `end` parameter (if provided) or the end of the
+        last available record in the storage.
+
+        You can request at most 24 hours from the timeline at once. If you need
+        more, you can issue consecutive requests where the `start` parameter
+        will be equal to the end of the last time interval returned in the last
+        response.
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingTimelineResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/recordings/{recording_id}/stream/stream.mp4':
+    get:
+      operationId: 'get-recording-mp4-stream'
+      tags:
+        - recording
+      summary: Getting MP4 stream
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: The earliest record to return
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: The latest record to return
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+
+        The endpoint will return recorded video from a given range as a
+        fragmented MP4 stream. See [the streaming description](#tag/streaming)
+        for more information about various types of streams.
+
+        If the given range contains a gap (i.e. the range is not continuous),
+        the gap will be skipped in the returned video. If the range contains a
+        discontinuity that does not allow for seamless playback (e.g. a change
+        of a codec), the resulting stream will be cut short.
+
+        Please note that if you need to keep track of the actual playback
+        position in the recording timeline, you'll need to fetch recording
+        streams that correspond to the intervals returned by
+        [the timeline endpoint](#tag/recording/operation/get-recording-timeline).
+        Otherwise, you'd lose the synchronization every time a gap gets
+        skipped.
+
+        If you need the returned video to be seekable, you'll need to convert
+        it into a regular MP4 file. There are many tools that can do this, for
+        example FFmpeg:
+        ```sh
+        ffmpeg -i input.mp4 -c:v copy -c:a copy output.mp4
+        ```
+
+        Note that the FFmpeg's MP4 muxer may not support all the codecs that
+        are supported by the camera. In such case, you can either choose a
+        different output container (e.g. MOV) or you can transcode the
+        corresponding audio/video stream into a different codec that will be
+        accepted by the MP4 muxer. For example:
+        ```sh
+        ffmpeg -i input.mp4 -c:v copy -c:a libopus output.mp4
+        ```
+
+        Keep in mind that copying the input audio/video should be always
+        preferred for performance reasons and also to avoid loss of
+        information.
+      responses:
+        '200':
+          description: OK
+          content:
+            video/mp4: {}
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
   '/v1/gpio/pins/':
     get:
       operationId: 'get-gpio-pins'
@@ -1948,6 +2260,11 @@ components:
               description: |
                 Indicates if the storage support and the
                 [corresponding API endpoints](#tag/storage) are available.
+            recording:
+              type: boolean
+              description: |
+                Indicates if the recording feature and the
+                [corresponding API endpoints](#tag/recording) are available.
             fragmented_mp4:
               type: boolean
               description: |
@@ -2960,6 +3277,112 @@ components:
                 Maximum acceptable bitrate in kbps (it applies to both VBR and
                 CBR)
               example: 100000
+    RecordingStorageBase:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - sd-card
+          description: |
+            Storage type. Possible values are:
+
+            * `sd-card` - SD card storage
+    SDCardRecordingStorage:
+      allOf:
+        - $ref: '#/components/schemas/RecordingStorageBase'
+        - type: object
+          properties:
+            slot:
+              type: integer
+              description: SD card identifier
+    RecordingStorage:
+      oneOf:
+        - $ref: '#/components/schemas/SDCardRecordingStorage'
+      discriminator:
+        propertyName: type
+        mapping:
+          sd-card: '#/components/schemas/SDCardRecordingStorage'
+      description: Recording storage
+    RecordingSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Set to `false` to stop the recording
+        stream:
+          type: string
+          description: ID of the stream that's supposed to be recorded
+        storage:
+          $ref: '#/components/schemas/RecordingStorage'
+    RecordingInfoBase:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Recording ID
+        enabled:
+          type: boolean
+          description: Set to `false` to stop the recording
+        stream:
+          type: string
+          description: ID of the stream that's supposed to be recorded
+        storage:
+          $ref: '#/components/schemas/RecordingStorage'
+        status:
+          type: string
+          enum:
+            - idle
+            - starting
+            - running
+            - error
+          description: |
+            Possible recording states:
+
+            * `idle` - the recording is not running
+            * `starting` - the recording is starting
+            * `running` - the recording is running
+            * `error` - the recording is in an error state (the actual error is
+                available in the `error` field)
+      example:
+        id: 426d4f5f-2e3d-4cda-b067-83b613d04c0e
+        enabled: true
+        stream: primary
+        storage:
+          type: sd-card
+          slot: 0
+        status: running
+    RecordingInfoIdle:
+      allOf:
+        - $ref: '#/components/schemas/RecordingInfoBase'
+    RecordingInfoStarting:
+      allOf:
+        - $ref: '#/components/schemas/RecordingInfoBase'
+    RecordingInfoRunning:
+      allOf:
+        - $ref: '#/components/schemas/RecordingInfoBase'
+    RecordingInfoError:
+      allOf:
+        - $ref: '#/components/schemas/RecordingInfoBase'
+        - type: object
+          properties:
+            error:
+              type: string
+              description: Error description
+    RecordingInfo:
+      oneOf:
+        - $ref: '#/components/schemas/RecordingInfoIdle'
+        - $ref: '#/components/schemas/RecordingInfoStarting'
+        - $ref: '#/components/schemas/RecordingInfoRunning'
+        - $ref: '#/components/schemas/RecordingInfoError'
+      discriminator:
+        propertyName: status
+        mapping:
+          idle: '#/components/schemas/RecordingInfoIdle'
+          starting: '#/components/schemas/RecordingInfoStarting'
+          running: '#/components/schemas/RecordingInfoRunning'
+          error: '#/components/schemas/RecordingInfoError'
     BasePinAction:
       type: object
       properties:
@@ -3566,6 +3989,48 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/StreamLimits'
+    RecordingCreatedResponse:
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RecordingInfo'
+    RecordingInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RecordingInfo'
+    RecordingListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/RecordingInfo'
+    RecordingTimelineResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                start:
+                  type: string
+                  format: date-time
+                  description: Start of a continuous video segment
+                end:
+                  type: string
+                  format: date-time
+                  description: End of a continuous video segment
+            example:
+              - start: '2024-03-26T10:00:00.000Z'
+                end: '2024-03-26T13:22:33.123Z'
+              - start: '2024-03-26T13:29:13.13Z'
+                end: '2024-03-27T10:00:00.000Z'
     PinInfoResponse:
       description: OK
       content:
