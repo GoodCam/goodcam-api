@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.13.0'
+  version: '1.14.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -347,6 +347,13 @@ tags:
 
       The endpoints in this section are available only if the `gpio`
       [feature](#operation/get-basic-info) is indicated.
+  - name: ssh
+    x-displayName: SSH
+    description: |
+      You can use the SSH endpoints to enable/disable the SSH service, get a
+      list of users that can log in via SSH and change their password. By
+      default, the SSH service is disabled, there is only the `root` user and
+      the `root` password is unusable, so it needs to be set up first.
 paths:
   '/':
     get:
@@ -423,6 +430,28 @@ paths:
       responses:
         '204':
           description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/logs/':
+    get:
+      operationId: 'get-log-messages'
+      tags:
+        - basic
+      summary: Getting log messages
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              example: |
+                Apr 11 10:46:55 goodcam user.info goodcam-server[902]: [goodcam_server] Loading application configuration
+                Apr 11 10:46:56 goodcam user.info goodcam-server[902]: [goodcam_server] Loading user settings
+                Apr 11 10:46:56 goodcam user.info goodcam-server[902]: [goodcam_http::server] HTTP server started at 0.0.0.0:80
+                Apr 11 10:46:56 goodcam user.info goodcam-server[902]: [goodcam_rtsp::server] RTSP server started at 0.0.0.0:554
         '303':
           $ref: '#/components/responses/Uninitialized'
         '401':
@@ -2159,6 +2188,114 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           description: Not Found
+  '/v1/ssh/':
+    get:
+      operationId: 'get-ssh-settings'
+      tags:
+        - ssh
+      summary: Getting SSH settings
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-ssh-settings'
+      tags:
+        - ssh
+      summary: Updating SSH settings
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSHSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/ssh/users/':
+    get:
+      operationId: 'get-ssh-users'
+      tags:
+        - ssh
+      summary: Listing SSH users
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHUserListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/ssh/users/{username}/':
+    get:
+      operationId: 'get-ssh-user'
+      tags:
+        - ssh
+      summary: Getting SSH user details
+      security:
+        - 'HTTP Digest': []
+      description: |
+        The endpoint currently does not provide any additional information. It
+        may be extended in the future though.
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Username
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHUserInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-ssh-user'
+      tags:
+        - ssh
+      summary: Changing SSH user settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Username
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSHUserSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHUserInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
 components:
   schemas:
     PublicInformation:
@@ -2349,6 +2486,22 @@ components:
           type: boolean
           description: Enable or disable WDR mode
           example: true
+        wdr_strength:
+          oneOf:
+            - type: string
+              enum: ['auto']
+              description: Automatic WDR strength based on the sensor profile.
+            - type: integer
+              minimum: 0
+              maximum: 100
+              description: Custom WDR strength.
+          description: |
+            Strength of the WDR effect. It can be either `auto` or a value
+            between 0 and 100. The `auto` option is based on the sensor profile
+            and minimizes the amount of extra noise in dark areas added by the
+            WDR effect. If the automatic strength isn't enough to brighten dark
+            parts of the image, you can use a fixed value.
+          example: auto
         night_mode:
           type: string
           enum: ['auto', 'on', 'off']
@@ -3827,6 +3980,27 @@ components:
           type: integer
           description: The amount of available space in bytes
           example: 17179869184
+    SSHSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates if the SSH service is enabled
+          example: false
+    SSHUserInfo:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Username
+          example: root
+    SSHUserSettings:
+      type: object
+      properties:
+        password:
+          type: string
+          description: Password
+          example: SuperSecretPassword
   responses:
     Uninitialized:
       description: Uninitialized device
@@ -4083,6 +4257,26 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SDCardInfo'
+    SSHSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SSHSettings'
+    SSHUserListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/SSHUserInfo'
+    SSHUserInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SSHUserInfo'
   securitySchemes:
     'HTTP Digest':
       type: http
