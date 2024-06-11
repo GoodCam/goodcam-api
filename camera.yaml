@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.14.0'
+  version: '1.15.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -213,10 +213,11 @@ tags:
       This section describes configuration of audio/video streams as well as
       protocols for retrieving the streams.
 
-      Currently there is a support for MJPEG and H.264 video and G.711 and PCM
-      audio. Other codecs may be added in the future. Not all devices support
-      all of the codecs. You can get a list of supported codecs using the API
-      endpoint for [getting stream limits](#operation/get-stream-limits).
+      Currently there is a support for MJPEG and H.264 video and G.711, PCM
+      and Opus audio. Other codecs may be added in the future. Not all devices
+      support all of the codecs. You can get a list of supported codecs using
+      the API endpoint for
+      [getting stream limits](#operation/get-stream-limits).
 
       Keep in mind that some encodings are not supported in certain media
       containers or streaming protocols. This matrix shows which codecs are
@@ -235,6 +236,38 @@ tags:
          [here](https://developer.mozilla.org/en-US/docs/Web/Media/Formats/WebRTC_codecs).*
       2. *Please note that not all players, especially web browsers, support
          all of these codecs in the fragmented MP4 container.*
+
+      ### Media buffer and RTSP/2.0
+
+      The media buffer feature is supported only if indicated by the
+      `media_buffer` flag (see
+      [getting basic device info](#operation/get-basic-info) for more
+      information). If enabled, the buffer keeps the last `N` seconds of video
+      in memory as configured by the `retention` property. The buffered video
+      can be retrieved using RTSP/2.0 as an initial part of a live stream. This
+      gives the client a short window of history in cases where it is important
+      to see what happened _just before now_ (e.g. when recording an incident
+      into a cloud storage).
+
+      Do not confuse the media buffer with recording. The media buffer is just
+      a short window containing the last `N` seconds of video. There is no
+      permanent storage. The buffer is cleared on every camera reboot and on
+      every change of the corresponding stream settings. The buffer has a
+      limited capacity that depends on the camera model. Usually, it should be
+      enough to store around 30 seconds of H.264 video with reasonable bitrate.
+      The lower the bitrate, the more video can be stored in the buffer.
+
+      The RTSP/2.0 protocol support should be considered experimental. However,
+      all RTSP/2.0 features related to the media buffer are considered stable.
+      The use of media buffer is indicated by the `Random-Access` media
+      property in the `SETUP` response and the available range is indicated by
+      the `Media-Range` property. To start streaming from a given position,
+      simply set the `Range` header in the `PLAY` request. To fetch contents of
+      the media buffer at a given maximum speed, use the `Speed` header. (Note
+      that the live video following the contents of the buffer will always be
+      delivered at `1.0x` speed.) See the
+      [RTSP/2.0 specification](https://datatracker.ietf.org/doc/html/rfc7826)
+      for more information.
 
   - name: recording
     x-displayName: Recording
@@ -2402,6 +2435,15 @@ components:
               description: |
                 Indicates if the recording feature and the
                 [corresponding API endpoints](#tag/recording) are available.
+            media_buffer:
+              type: boolean
+              description: |
+                Indicates if the [media buffer feature](#tag/streaming) is
+                available. This property also implies `rtsp_20`.
+            rtsp_20:
+              type: boolean
+              description: |
+                Indicates if the RTSP/2.0 protocol is supported.
             fragmented_mp4:
               type: boolean
               description: |
@@ -3270,6 +3312,16 @@ components:
     StreamSettingsRead:
       type: object
       properties:
+        retention:
+          type: integer
+          minimum: 0
+          default: 0
+          description: |
+            Number of milliseconds to keep in the media buffer. If set to `0`,
+            the media buffer will be disabled for this stream. This property is
+            available only if the firmware supports the
+            [media buffer feature](#tag/streaming).
+          example: 10000
         audio:
           $ref: '#/components/schemas/AudioSettings'
         video:
