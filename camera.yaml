@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.15.0'
+  version: '1.16.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -268,7 +268,8 @@ tags:
       delivered at `1.0x` speed.) See the
       [RTSP/2.0 specification](https://datatracker.ietf.org/doc/html/rfc7826)
       for more information.
-
+  - name: audio-output
+    x-displayName: Audio output
   - name: recording
     x-displayName: Recording
     description: |
@@ -1569,6 +1570,11 @@ paths:
         <a href="https://github.com/GoodCam/goodcam-api/tree/master/examples/webrtc-player" target="_blank">the player example</a>
         for more information.
       parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
         - name: Connection
           in: header
           required: true
@@ -1601,6 +1607,156 @@ paths:
       responses:
         '101':
           description: Switching Protocols
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/audio-outputs/':
+    get:
+      operationId: 'list-audio-outputs'
+      tags:
+        - audio-output
+      summary: Listing audio outputs
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `audio_output`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/AudioOutputListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/audio-outputs/{output_id}/':
+    get:
+      operationId: 'get-audio-output'
+      tags:
+        - audio-output
+      summary: Getting audio output details
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `audio_output`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: output_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: analog-speaker
+      responses:
+        '200':
+          $ref: '#/components/responses/AudioOutputInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-audio-output'
+      tags:
+        - audio-output
+      summary: Changing audio output settings
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `audio_output`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: output_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: analog-speaker
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AudioOutputSettings'
+            example:
+              volume: 80
+      responses:
+        '200':
+          $ref: '#/components/responses/AudioOutputInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/audio-outputs/{output_id}/play-stream/':
+    post:
+      operationId: 'play-audio-stream'
+      tags:
+        - audio-output
+      summary: Playing audio stream
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `audio_output`
+        [feature](#operation/get-basic-info) is indicated.
+
+        The endpoint accepts any audio stream in the `audio/basic` format, i.e.
+        a single-channel audio at 8000 Hz encoded as 8-bit mu-Law PCM. Other
+        formats may be supported in the future. Any previous audio playback
+        will be canceled.
+
+        For large or long-running audio streams, it is highly recommended to
+        use the `Expect: 100-continue` header, if supported by the client, to
+        avoid sending audio data if the server is unable to process it (e.g.
+        due to unauthorized request). Chunked transfer encoding may be used if
+        the size of the audio stream is not known in advance.
+      parameters:
+        - name: output_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: analog-speaker
+      requestBody:
+        content:
+          audio/basic: {}
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/audio-outputs/{output_id}/stop/':
+    post:
+      operationId: 'stop-audio-playback'
+      tags:
+        - audio-output
+      summary: Stopping audio playback
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `audio_output`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: output_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: analog-speaker
+      responses:
+        '204':
+          description: No Content
         '303':
           $ref: '#/components/responses/Uninitialized'
         '401':
@@ -2430,20 +2586,24 @@ components:
               description: |
                 Indicates if the storage support and the
                 [corresponding API endpoints](#tag/storage) are available.
+              example: true
             recording:
               type: boolean
               description: |
                 Indicates if the recording feature and the
                 [corresponding API endpoints](#tag/recording) are available.
+              example: true
             media_buffer:
               type: boolean
               description: |
                 Indicates if the [media buffer feature](#tag/streaming) is
                 available. This property also implies `rtsp_20`.
+              example: true
             rtsp_20:
               type: boolean
               description: |
                 Indicates if the RTSP/2.0 protocol is supported.
+              example: true
             fragmented_mp4:
               type: boolean
               description: |
@@ -2494,10 +2654,17 @@ components:
               description: |
                 Indicates if audio input is available and if it can be
                 configured in the [streaming](#tag/streaming) section.
+              example: true
+            audio_output:
+              type: boolean
+              description: |
+                Indicates if [audio output](#tag/audio-output) is available.
+              example: true
             gpio:
               type: boolean
               description: |
                 Indicates if the [GPIO subsystem](#tag/gpio) is available.
+              example: true
     FirmwareInformation:
       type: object
       properties:
@@ -3482,6 +3649,24 @@ components:
                 Maximum acceptable bitrate in kbps (it applies to both VBR and
                 CBR)
               example: 100000
+    AudioOutputSettings:
+      type: object
+      properties:
+        volume:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Audio output volume
+          example: 50
+    AudioOutputInfo:
+      allOf:
+        - type: object
+          properties:
+            id:
+              type: string
+              description: Audio output device identifier
+              example: analog-speaker
+        - $ref: '#/components/schemas/AudioOutputSettings'
     RecordingStorageBase:
       type: object
       properties:
@@ -4329,6 +4514,20 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SSHUserInfo'
+    AudioOutputListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/AudioOutputInfo'
+    AudioOutputInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AudioOutputInfo'
   securitySchemes:
     'HTTP Digest':
       type: http
