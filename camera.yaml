@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.16.0'
+  version: '1.17.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -3216,10 +3216,12 @@ components:
           enum:
             - vbr
             - cbr
+            - cq
           description: |
             Bitrate control mode. Possible values are:
             * `vbr` - variable bitrate
             * `cbr` - constant bitrate
+            * `cq` - constant quality
           example: vbr
     VBRBitrateSettings:
       allOf:
@@ -3248,7 +3250,7 @@ components:
               description: Maximum bitrate in kbps (an integer grater than 0)
               example: 4000
     CBRBitrateSettings:
-       allOf:
+      allOf:
         - $ref: '#/components/schemas/BaseBitrateSettings'
         - type: object
           properties:
@@ -3257,6 +3259,20 @@ components:
               minimum: 1
               description: Average bitrate in kbps (an integer grater than 0)
               example: 4000
+    CQBitrateSettings:
+      allOf:
+        - $ref: '#/components/schemas/BaseBitrateSettings'
+        - type: object
+          properties:
+            quality:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: |
+                Video quality. A value between 0 and 100 (inclusive), where 0
+                is the lowest possible quality and 100 is the highest possible
+                quality.
+              example: 60
     BitrateSettings:
       description: |
         Bitrate settings
@@ -3276,11 +3292,13 @@ components:
       oneOf:
         - $ref: '#/components/schemas/VBRBitrateSettings'
         - $ref: '#/components/schemas/CBRBitrateSettings'
+        - $ref: '#/components/schemas/CQBitrateSettings'
       discriminator:
         propertyName: mode
         mapping:
           vbr: '#/components/schemas/VBRBitrateSettings'
           cbr: '#/components/schemas/CBRBitrateSettings'
+          cq: '#/components/schemas/CQBitrateSettings'
     BaseAudioSettings:
       type: object
       properties:
@@ -3635,6 +3653,24 @@ components:
               example:
                 - "1920x1080"
                 - "1280x720"
+            valid_bitrate_modes:
+              type: array
+              description: |
+                A list of valid bitrate modes (other modes will be rejected).
+
+                For compatibility reasons, if the field is empty, `null` or not
+                present, only the `vbr` and `cbr` modes will be accepted.
+
+                Possible values are:
+                * `vbr` - variable bitrate
+                * `cbr` - constant bitrate
+                * `cq` - constant quality
+              items:
+                type: string
+                enum:
+                  - vbr
+                  - cbr
+                  - cq
             max_fps:
               type: integer
               description: Maximum available frame rate
