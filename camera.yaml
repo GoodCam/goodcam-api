@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.17.0'
+  version: '1.18.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -612,6 +612,9 @@ paths:
       tags:
         - privacy-mask
       summary: Getting current privacy mask settings
+      description: |
+        This endpoint is available only if the `privacy_mask`
+        [feature](#operation/get-basic-info) is indicated.
       security:
         - 'HTTP Digest': []
       responses:
@@ -626,6 +629,9 @@ paths:
       tags:
         - privacy-mask
       summary: Setting privacy mask
+      description: |
+        This endpoint is available only if the `privacy_mask`
+        [feature](#operation/get-basic-info) is indicated.
       security:
         - 'HTTP Digest': []
       requestBody:
@@ -2580,6 +2586,12 @@ components:
               description: |
                 Indicates if the OSD feature and the
                 [corresponding API endpoints](#tag/osd) are available.
+              example: true
+            privacy_mask:
+              type: boolean
+              description: |
+                Indicates if the privacy mask feature and the
+                [corresponding API endpoints](#tag/privacy-mask) are available.
               example: true
             storage:
               type: boolean
