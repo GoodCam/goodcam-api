@@ -1,0 +1,3069 @@
+openapi: '3.0.2'
+info:
+  title: GoodCam NVR API (alpha)
+  version: '1.0.0'
+  description: |
+    **This API documentation is a draft and there may be breaking changes in
+    the API without prior notice. The API itself is still a work in progress,
+    there are missing features and there may be bugs.**
+
+    GoodCam devices provide a REST API, RTSP server and they are also able to
+    advertise themselves in a local network environment using mDNS and DNS-SD.
+
+    # Authentication
+
+    Most of the HTTP endpoints require authentication via
+    [HTTP Digest](https://tools.ietf.org/html/rfc7616). The same authentication
+    is also required by the RTSP server. It is possible to choose between MD5
+    and SHA-256 digest when the application is being configured for the first
+    time. It is not possible to switch between MD5 and SHA-256 later without
+    factory reset because the HTTP Digest standard itself does not provide any
+    means for digest algorithm negotiation. The only alternative solution would
+    be providing `WWW-Authenticate` challenges with all supported algorithms.
+    Such solution would not make much sense from the security point of view
+    because any potential attacker could simply choose the weakest digest
+    algorithm available.
+
+    The MD5 digest should be considered deprecated and its use should be
+    avoided. It's supported only for backwards compatibility with
+    [RFC 2617](https://tools.ietf.org/html/rfc2617) (the former definition of
+    HTTP Digest). Unfortunately, even modern web browsers currently don't
+    support other HTTP Digest algorithms than MD5, so in cases when the API is
+    being consumed by a web browser, it is possible to use the MD5 algorithm or
+    it is also possible to use an alternative HTTP client supporting the more
+    recent version of HTTP Digest. The latter option should be preferred if
+    possible.
+
+    Some web browsers also do not support HTTP Digest for WebSocket, which is
+    being used for WebRTC signaling. In order to overcome this issue, it is
+    possible to generate access tokens which can be used as a query parameter.
+    Whenever there is a valid access token within query string of a request URL
+    (query parameter `x-goodcam-devicetoken`), HTTP Digest authentication will
+    be skipped.
+
+    # Security considerations
+
+    Currently, there is no TLS or other forms of encryption being used. The
+    REST API is available only via plain HTTP. The reasoning behind is simple.
+    Using TLS in a local network environment is impractical. There are
+    basically only two options for using TLS in such environments:
+
+    1. Registering a domain name that's globally unique (e.g. xyz.com) and
+       buying a proper TLS certificate from a CA (or using Let's Encrypt). All
+       devices in the local network would then have to use a local DNS server
+       which would be resolving the hostname to a local IP address. Note that
+       there is no CA that would issue a TLS certificate for a hostname that
+       cannot be verified as globally unique. Doing so would be a serious
+       security risk.
+    2. Using a self-signed certificate (either directly or as a custom CA) and
+       distributing it to all client devices within the local network. All the
+       client devices would still have to use a hostname to access the API.
+
+    Either of these options are rarely used because it isn't easy to set
+    everything up without certain technical skills and it may also include some
+    additional costs. Right now there is no other widely-used option for HTTP
+    encryption within local networks.
+
+    **Because of this, the application services (both HTTP and RTSP) should not
+    be exposed to the Internet or other outside networks.**
+
+    TLS support might be implemented in the future for the REST API to make
+    exposing the API publicly possible, however, the RTSP protocol does not
+    support TLS, so exposing it would still be a serious security risk. If
+    needed, the remote access functionality should be implemented using
+    [GoodCam Cloud](https://goodcam.github.io/goodcam-api/cloud.html) and
+    WebRTC.
+
+    # Service discovery
+
+    GoodCam devices advertise themselves using
+    [mDNS](https://tools.ietf.org/html/rfc6762) and
+    [DNS-SD](https://tools.ietf.org/html/rfc6763). The service name is
+    `_goodcam-nvr._tcp.local`, so all you need to do to find a GoodCam device
+    in a local network is to send an mDNS query asking for `PTR` records named
+    `_goodcam-nvr._tcp.local`. Doing so will yield instance names of all
+    GoodCam devices within the local network. These instance names can be used
+    then to retrieve `SRV` and `TXT` records of those instances. The `SRV`
+    records will then contain the device hostnames and ports where the REST API
+    can be accessed. The `TXT` records will contain the API version and the
+    root for the REST API endpoints. The API root is `/api/` by default. And,
+    of course, the device IP addresses can be retrieved by querying the `A` or
+    `AAAA` records.
+
+    ## Example
+    ```text
+    -> mDNS query (QCLASS, QTYPE, QNAME):
+        ANY PTR _goodcam-nvr._tcp.local
+
+    <- mDNS response (RR TYPE, RR DATA):
+        PTR My\ NVR._goodcam-nvr._tcp.local
+        PTR GoodCam._goodcam-nvr._tcp.local
+        PTR GoodCam\ #11._goodcam-nvr._tcp.local
+
+    -> mDNS query (QCLASS, QTYPE, QNAME):
+        ANY SRV My\ NVR._goodcam-nvr._tcp.local
+
+    <- mDNS response (RR TYPE, RR DATA):
+        SRV 0 0 80 GC12345678ABCD.local
+
+    -> mDNS query (QCLASS, QTYPE, QNAME):
+        ANY TXT My\ NVR._goodcam-nvr._tcp.local
+
+    <- mDNS response (RR TYPE, RR DATA):
+        TXT root=/ version=1
+
+    -> mDNS query (QCLASS, QTYPE, QNAME):
+        ANY A GC12345678ABCD.local
+
+    <- mDNS response (RR TYPE, RR DATA):
+        A 192.168.123.123
+    ```
+
+    # Initial setup
+
+    When a GoodCam device hasn't been set up before (or after factory reset),
+    the `initialized` property returned by the
+    [public info endpoint](#tag/basic/operation/get-public-info) will be set to
+    `false` and all other API endpoints will be redirecting to `/v1/users/`
+    indicating that there are no user accounts and the initial setup should be
+    performed.
+
+    The setup itself is simple. The API client is only required to create the
+    first user account (see
+    [Creating a new user account](#operation/create-user)).
+
+    # Example: accessing an NVR in a mobile app
+
+    1. Look up all `_goodcam-nvr._tcp.local` services using service discovery.
+    2. List all instance names in the user interface, e.g.:
+       * My NVR
+       * GoodCam
+       * GoodCam #11
+    3. Allow entering an NVR IP address manually (useful in cases when the
+       service discovery does not work for some reason).
+    4. After the user taps on an NVR, perform the initial setup (if needed)
+       and log in to the NVR (ask the user for credentials).
+    5. After successful login, allow changing NVR settings, displaying video
+       streams, taking snapshots, etc.
+servers:
+  - url: 'http://0.0.0.0/api/'
+tags:
+  - name: basic
+    x-displayName: Basic information and device control
+  - name: users
+    x-displayName: User management
+  - name: network
+    x-displayName: Network settings
+  - name: storage
+    x-displayName: Storage
+  - name: streaming
+    x-displayName: Streaming
+    description: |
+      This section describes configuration of audio/video streams as well as
+      protocols for retrieving the streams.
+
+      Currently, there is a support for connecting IP cameras via RTSP and for
+      serving audio/video streams using RTSP, WebRTC and HTTP. The following
+      audio/video codecs are supported:
+
+      **Video codecs:**
+        - H.264 (AVC)
+
+      **Audio codecs:**
+        - G.711 (PCMU/PCMA)
+        - PCM (uncompressed)
+        - Opus
+
+      Keep in mind that some encodings are not supported in certain media
+      containers or streaming protocols. This matrix shows which codecs are
+      supported where:
+
+      |      | H.264 | G.711 | PCM | Opus |
+      | ---- |:-----:|:-----:|:---:|:----:|
+      | **RTSP** | &#x25CF; | &#x25CF; | &#x25CF; | &#x25CF; |
+      | **WebRTC**<sup>1</sup> | &#x25CF; | &#x25CF; | &#x25CF; | &#x25CF; |
+      | **Fragmented MP4 over HTTP**<sup>2</sup> | &#x25CF; | &#x25CF; | &#x25CF; | &#x25CF; |
+
+      1. *Even though we technically support these codecs in WebRTC, web
+         browsers are not required to implement all of them. The list of codecs
+         supported by web browsers can be found
+         [here](https://developer.mozilla.org/en-US/docs/Web/Media/Formats/WebRTC_codecs).*
+      2. *Please note that not all players, especially web browsers, support
+         all of these codecs in the fragmented MP4 container.*
+
+      Note that when adding an RTSP stream that requires authentication, the
+      credentials must be included in the `source_url`. For security reasons,
+      the configured credentials won't be echoed back in the create/update
+      response, when listing the streams or getting stream details.
+
+      ### Media buffer and RTSP/2.0
+
+      The media buffer feature is supported only if indicated by the
+      `media_buffer` flag (see
+      [getting basic device info](#operation/get-basic-info) for more
+      information). If enabled, the buffer keeps the last `N` seconds of video
+      in memory as configured by the `retention` property. The buffered video
+      can be retrieved using RTSP/2.0 as an initial part of a live stream. This
+      gives the client a short window of history in cases where it is important
+      to see what happened _just before now_ (e.g. when recording an incident
+      into a cloud storage).
+
+      Do not confuse the media buffer with recording. The media buffer is just
+      a short window containing the last `N` seconds of video. There is no
+      permanent storage. The buffer is cleared on every NVR reboot and on
+      every change of the corresponding stream settings. The buffer has a
+      limited capacity that depends on the NVR model. Usually, it should be
+      enough to store around 30 seconds of H.264 video with reasonable bitrate.
+      The lower the bitrate, the more video can be stored in the buffer.
+
+      The RTSP/2.0 protocol support should be considered experimental. However,
+      all RTSP/2.0 features related to the media buffer are considered stable.
+      The use of media buffer is indicated by the `Random-Access` media
+      property in the `SETUP` response and the available range is indicated by
+      the `Media-Range` property. To start streaming from a given position,
+      simply set the `Range` header in the `PLAY` request. To fetch contents of
+      the media buffer at a given maximum speed, use the `Speed` header. (Note
+      that the live video following the contents of the buffer will always be
+      delivered at `1.0x` speed.) See the
+      [RTSP/2.0 specification](https://datatracker.ietf.org/doc/html/rfc7826)
+      for more information.
+  - name: recording
+    x-displayName: Recording
+    description: |
+      Each recording, when enabled, corresponds to a single background task
+      responsible for storing video from a given stream into a given storage.
+      The video is being stored in form of short video segments. When the
+      storage gets full, the oldest video segment will be deleted to make space
+      for new video. The endpoints below provide convenient way for accessing
+      the recorded video.
+
+      **IMPORTANT:** Do not move, rename, delete or modify files in the
+      storage! This could easily damage the recording index.
+  - name: cloud
+    x-displayName: Cloud client
+    description: |
+      The cloud client works as a gateway for remote access to the device. The
+      client is responsible for maintaining a permanent connection with a cloud
+      service. The connection itself is done using HTTP upgrade and
+      documentation of the corresponding protocol is available
+      <a href="https://github.com/GoodCam/goodcam-api/tree/master/docs/cloud-server.md" target="_blank">here</a>.
+      The cloud client supports both HTTP and HTTPS, so it is possible (and
+      preferable) to secure the connection using TLS.
+
+      ### Connecting a device to GoodCam Cloud
+
+      In principle, the device can connect to any cloud service implementing
+      the underlying protocol, however, the pairing process may be different
+      with third party cloud providers, so we will focus only on the GoodCam
+      Cloud service here.
+
+      In order to set up your device for remote access, you will need to:
+
+      1. Perform the initial setup (if needed; see [Initial setup](#section/Initial-setup)).
+      2. Enable the cloud client (see [Changing cloud client settings](#operation/update-cloud-client-settings)).
+      3. Get the device device ID (see [Getting information about the cloud client](#operation/get-cloud-client-info)).
+      4. Initiate pairing for the device ID (see the <a href="cloud.html" target="_blank">GoodCam Cloud API documentation</a>).
+      5. Connect the device to the cloud (see [Connecting to the cloud service](#operation/connect-to-cloud)).
+
+      Once paired, the device will maintain a permanent connection with the
+      cloud service and it will be available for remote access via the GoodCam
+      Cloud API. The device can be paired with only one GoodCam Cloud account
+      at a time and only this user will be able to access the device remotely.
+
+      _Note: The cloud service URL should be set to
+      `https://proxy.goodcam.io:8888` in order to connect to the GoodCam Cloud
+      service. Different URLs may be used in order to connect the device to
+      another cloud service provider._
+  - name: gpio
+    x-displayName: GPIO
+    description: |
+      The GPIO subsystem provides an API for controlling digital input/output
+      pins. Input pins are read-only and you can only retrieve their value.
+      Output pins can be either set to a given fixed value or you can configure
+      a custom sequence of actions that will drive the output pins. You can
+      also group several output pins together and control the whole group.
+
+      The endpoints in this section are available only if the `gpio`
+      [feature](#operation/get-basic-info) is indicated.
+  - name: ssh
+    x-displayName: SSH
+    description: |
+      You can use the SSH endpoints to enable/disable the SSH service, get a
+      list of users that can log in via SSH and change their password. By
+      default, the SSH service is disabled, there is only the `root` user and
+      the `root` password is unusable, so it needs to be set up first.
+paths:
+  '/':
+    get:
+      operationId: 'get-public-info'
+      tags:
+        - basic
+      summary: Getting public info
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicInformationResponse'
+  '/v1/':
+    get:
+      operationId: 'get-basic-info'
+      tags:
+        - basic
+      summary: Getting basic device info
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/BasicInformationResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-basic-info'
+      tags:
+        - basic
+      summary: Updating basic device info
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timezone:
+                  $ref: '#/components/schemas/Timezone'
+      responses:
+        '200':
+          $ref: '#/components/responses/BasicInformationResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/reboot/':
+    post:
+      operationId: 'reboot'
+      tags:
+        - basic
+      summary: Rebooting the device
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/factory-reset/':
+    post:
+      operationId: 'factory-reset'
+      tags:
+        - basic
+      summary: Device factory reset
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/logs/':
+    get:
+      operationId: 'get-log-messages'
+      tags:
+        - basic
+      summary: Getting log messages
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              example: |
+                Apr 11 10:46:55 goodcam user.info goodcam-server[902]: [goodcam_server] Loading application configuration
+                Apr 11 10:46:56 goodcam user.info goodcam-server[902]: [goodcam_server] Loading user settings
+                Apr 11 10:46:56 goodcam user.info goodcam-server[902]: [goodcam_http::server] HTTP server started at 0.0.0.0:80
+                Apr 11 10:46:56 goodcam user.info goodcam-server[902]: [goodcam_rtsp::server] RTSP server started at 0.0.0.0:554
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/firmware/':
+    get:
+      operationId: 'get-firmware-information'
+      tags:
+        - basic
+      summary: Getting firmware information
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/FirmwareInformationResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'update-firmware'
+      tags:
+        - basic
+      summary: Updating firmware
+      description: |
+        **Please note that firmware update is a delicate procedure. The device
+        power must not be interrupted during the firmware update. Doing so can
+        damage the device irreversibly.**
+
+        The firmware update may also factory reset the device depending on the
+        firmware version. The device will be reset into factory defaults if the
+        current version of the firmware and the new version of the firmware are
+        considered incompatible. The firmware (in)compatibility is determined
+        using these semantic versioning rules:
+        * `0.a.b` -> `0.a.c` where `c >= b` is considered a compatible update,
+        * `a.b.c` -> `a.d.e` where `a > 0` and `d >= b` is considered a
+          compatible update regardless of the relation between `c` and `e`,
+        * all other updates are considered incompatible and will trigger device
+          factory reset.
+
+        For example:
+        * `0.2.1` -> `0.1.0` - incompatible
+        * `0.2.1` -> `0.2.0` - incompatible
+        * `0.2.1` -> `0.2.1` - compatible
+        * `0.2.1` -> `0.2.2` - compatible
+        * `0.2.1` -> `0.3.0` - incompatible
+        * `2.2.2` -> `1.0.0` - incompatible
+        * `2.2.2` -> `2.1.0` - incompatible
+        * `2.2.2` -> `2.2.1` - compatible
+        * `2.2.2` -> `2.2.2` - compatible
+        * `2.2.2` -> `2.2.3` - compatible
+        * `2.2.2` -> `2.3.0` - compatible
+        * `2.2.2` -> `3.0.0` - incompatible
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        required: true
+        content:
+          application/octet-stream: {}
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/users/':
+    get:
+      operationId: 'list-users'
+      tags:
+        - users
+      summary: Listing user accounts
+      security:
+        - 'HTTP Digest': []
+      description: |
+        The endpoint returns a list of objects describing particular user
+        accounts. No authentication is required during the initial setup.
+      responses:
+        '200':
+          $ref: '#/components/responses/UserListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'create-user'
+      tags:
+        - users
+      summary: Creating a new user account
+      security:
+        - 'HTTP Digest': []
+      description: |
+        The endpoint can be used for creating new user accounts and for initial
+        setup of the camera. No authentication is required during the initial
+        setup.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  example: '123456'
+                digest_algorithm:
+                  type: string
+                  enum:
+                    - md5
+                    - sha256
+                  description: |
+                    The field is being used only when creating the first user
+                    account (i.e. the initial setup). It will be silently
+                    ignored when creating any subsequent user accounts. If
+                    omitted during the initial setup, `sha256` will be used as
+                    the default value.
+                  example: md5
+      responses:
+        '201':
+          $ref: '#/components/responses/UserCreatedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/users/{username}/':
+    get:
+      operationId: 'get-user'
+      tags:
+        - users
+      summary: Getting user account details
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/UserDetailsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-user'
+      tags:
+        - users
+      summary: Changing user settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+                  example: '1234'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserDetailsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    delete:
+      operationId: 'delete-user'
+      tags:
+        - users
+      summary: Deleting user account
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      description: |
+        It isn't allowed to delete a user account if it is the only user
+        account. Use [factory reset](#operation/factory-reset) in such case.
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/users/{username}/token/':
+    get:
+      operationId: 'get-access-token'
+      tags:
+        - users
+      summary: Creating an access token
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      description: |
+        This endpoint will generate an access token which can be used to access
+        the API endpoints on behalf of the corresponding user without
+        authenticating using HTTP Digest. **Even though the access tokens are
+        valid only for a short period of time, their use should be avoided if
+        possible.** Especially in cases where they need to be sent unencrypted
+        (using plain HTTP) over untrusted networks.
+
+        The name of the query parameter that can be used to pass access tokens
+        to the API is `X-GoodCam-DeviceToken`.
+      responses:
+        '200':
+          $ref: '#/components/responses/AccessTokenResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/network/':
+    get:
+      operationId: 'get-network-settings'
+      tags:
+        - network
+      summary: Getting general network settings
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-network-settings'
+      tags:
+        - network
+      summary: Changing network settings
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_name:
+                  type: string
+                  description: Name of the device (used as DNS-SD instance
+                    name). The device name cannot exceed 63 bytes when encoded
+                    as UTF-8.
+                  example: My NVR
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/network/interfaces/':
+    get:
+      operationId: 'get-network-interfaces'
+      tags:
+        - network
+      summary: Listing network interfaces
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkInterfaceListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/network/interfaces/{interface_name}/':
+    get:
+      operationId: 'get-network-interface'
+      tags:
+        - network
+      summary: Getting network interface settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: interface_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkInterfaceSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-network-interface'
+      tags:
+        - network
+      summary: Changing network interface settings
+      security:
+        - 'HTTP Digest': []
+      description: |
+        When changing the network interface mode, all fields required for the
+        particular mode must be present in the request. Otherwise, only the
+        fields being changed need to be present. The `mac_address` field can be
+        set to force using a given MAC address. Setting the field to `null`
+        will reset the interface to its original MAC address.
+
+        The device needs to be rebooted for the changes to take effect.
+
+        **Fields required for the `static` mode:**
+        * `ipv4_address`
+        * `ipv4_mask`
+
+        **Fields required for the `dhcp` mode:**
+        * `dns_from_dhcp`
+      parameters:
+        - name: interface_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NetworkInterfaceSettingsWrite'
+            example:
+              ipv4_address: 192.168.1.10
+      responses:
+        '200':
+          $ref: '#/components/responses/NetworkInterfaceSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/cloud/':
+    get:
+      operationId: 'get-cloud-client-info'
+      tags:
+        - cloud
+      summary: Getting information about the cloud client
+      description: |
+        This endpoint is available only if the `cloud_client`
+        [feature](#operation/get-basic-info) is indicated.
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/CloudClientInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-cloud-client-settings'
+      tags:
+        - cloud
+      summary: Changing cloud client settings
+      description: |
+        This endpoint is available only if the `cloud_client`
+        [feature](#operation/get-basic-info) is indicated.
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloudClientSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/CloudClientInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/cloud/connect/':
+    post:
+      operationId: 'connect-to-cloud'
+      tags:
+        - cloud
+      summary: Connecting to the cloud service
+      description: |
+        This endpoint is available only if the `cloud_client`
+        [feature](#operation/get-basic-info) is indicated.
+
+        A POST request to this endpoint will trigger an immediate connection
+        attempt. If the client is already connected to the cloud service, the
+        current connection will be closed and a new connection will be created.
+        The API will return one of the following responses depending on the
+        result of the connection attempt:
+
+        * `204 No Content` - if the connection attempt was successful
+        * `400 Bad Request` - if the cloud client is disabled
+        * `502 Bad Gateway` - if the connection attempt failed
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+  '/v1/streams/':
+    get:
+      operationId: 'list-streams'
+      tags:
+        - streaming
+      summary: Listing media streams
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/StreamListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'add-stream'
+      tags:
+        - streaming
+      summary: Adding media stream
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamSettingsCreate'
+            example:
+              name: ch-01
+              type: rtsp
+              source_url: 'rtsp://admin:password@192.168.1.100/videoMain'
+      responses:
+        '201':
+          $ref: '#/components/responses/StreamInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/streams/{stream_name}/':
+    get:
+      operationId: 'get-stream-details'
+      tags:
+        - streaming
+      summary: Getting stream details
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/StreamInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-stream-settings'
+      tags:
+        - streaming
+      summary: Changing stream settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamSettingsWrite'
+            example:
+              source_url: 'rtsp://admin:password@192.168.1.100/videoMain'
+      responses:
+        '200':
+          $ref: '#/components/responses/StreamInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    delete:
+      operationId: 'delete-stream'
+      tags:
+        - streaming
+      summary: Deleting media stream
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/streams/{stream_name}/stream.mp4':
+    get:
+      operationId: 'get-mp4-stream'
+      tags:
+        - streaming
+      summary: Getting MP4 stream
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `fragmented_mp4`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            video/mp4: {}
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/streams/{stream_name}/web-rtc/':
+    get:
+      operationId: 'web-rtc-signaling'
+      tags:
+        - streaming
+      summary: WebRTC signaling
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `webrtc`
+        [feature](#operation/get-basic-info) is indicated.
+
+        It is an entrypoint for WebSocket based signaling protocol for
+        initiating WebRTC sessions. The signaling protocol itself is described
+        <a href="https://github.com/GoodCam/goodcam-api/tree/master/docs/webrtc.md" target="_blank">here</a>.
+        See also
+        <a href="https://github.com/GoodCam/goodcam-api/tree/master/examples/webrtc-player" target="_blank">the player example</a>
+        for more information.
+      parameters:
+        - name: stream_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Connection
+          in: header
+          required: true
+          schema:
+            type: string
+          example: upgrade
+        - name: Upgrade
+          in: header
+          required: true
+          schema:
+            type: string
+          example: websocket
+        - name: Sec-WebSocket-Version
+          in: header
+          required: true
+          schema:
+            type: integer
+          example: 13
+        - name: Sec-WebSocket-Key
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: Sec-WebSocket-Protocol
+          in: header
+          required: false
+          schema:
+            type: string
+          example: gcsp
+      responses:
+        '101':
+          description: Switching Protocols
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/recordings/':
+    get:
+      operationId: 'list-recordings'
+      tags:
+        - recording
+      summary: Listing recordings
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'create-recording'
+      tags:
+        - recording
+      summary: Creating a new recording
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/RecordingSettings'
+              required:
+                - enabled
+                - stream
+                - storage
+            example:
+              stream: primary
+              storage:
+                type: sd-card
+                slot: 0
+      responses:
+        '201':
+          $ref: '#/components/responses/RecordingCreatedResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/recordings/{recording_id}/':
+    get:
+      operationId: 'get-recording-details'
+      tags:
+        - recording
+      summary: Getting recording details
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-recording'
+      tags:
+        - recording
+      summary: Changing recording settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordingSettings'
+            example:
+              stream: primary
+              storage:
+                type: sd-card
+                slot: 0
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    delete:
+      operationId: 'delete-recording'
+      tags:
+        - recording
+      summary: Deleting recording
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+
+        **WARNING**: Deleting a recording will also delete the corresponding
+        recorded video!
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/recordings/{recording_id}/timeline/':
+    get:
+      operationId: 'get-recording-timeline'
+      tags:
+        - recording
+      summary: Getting recording timeline
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: The earliest record to return
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: The latest record to return
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 1000
+          description: Maximum number of time intervals to return
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+
+        The endpoint will return requested portion of the recording timeline as
+        a list of consecutive distinct time intervals where continuous records
+        are available. Start of the first time interval will be greater than or
+        equal to the `start` parameter (if provided) or the start of the first
+        available record in the storage. End of the last interval will be lower
+        than or equal to the `end` parameter (if provided) or the end of the
+        last available record in the storage.
+
+        You can request at most 24 hours from the timeline at once. If you need
+        more, you can issue consecutive requests where the `start` parameter
+        will be equal to the end of the last time interval returned in the last
+        response.
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingTimelineResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/recordings/{recording_id}/stream/stream.mp4':
+    get:
+      operationId: 'get-recording-mp4-stream'
+      tags:
+        - recording
+      summary: Getting MP4 stream
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: recording_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: The earliest record to return
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: The latest record to return
+      description: |
+        This endpoint is available only if the `recording`
+        [feature](#operation/get-basic-info) is indicated.
+
+        The endpoint will return recorded video from a given range as a
+        fragmented MP4 stream. See [the streaming description](#tag/streaming)
+        for more information about various types of streams.
+
+        If the given range contains a gap (i.e. the range is not continuous),
+        the gap will be skipped in the returned video. If the range contains a
+        discontinuity that does not allow for seamless playback (e.g. a change
+        of a codec), the resulting stream will be cut short.
+
+        Please note that if you need to keep track of the actual playback
+        position in the recording timeline, you'll need to fetch recording
+        streams that correspond to the intervals returned by
+        [the timeline endpoint](#tag/recording/operation/get-recording-timeline).
+        Otherwise, you'd lose the synchronization every time a gap gets
+        skipped.
+
+        If you need the returned video to be seekable, you'll need to convert
+        it into a regular MP4 file. There are many tools that can do this, for
+        example FFmpeg:
+        ```sh
+        ffmpeg -i input.mp4 -c:v copy -c:a copy output.mp4
+        ```
+
+        Note that the FFmpeg's MP4 muxer may not support all the codecs that
+        are supported by the device. In such case, you can either choose a
+        different output container (e.g. MOV) or you can transcode the
+        corresponding audio/video stream into a different codec that will be
+        accepted by the MP4 muxer. For example:
+        ```sh
+        ffmpeg -i input.mp4 -c:v copy -c:a libopus output.mp4
+        ```
+
+        Keep in mind that copying the input audio/video should be always
+        preferred for performance reasons and also to avoid loss of
+        information.
+      responses:
+        '200':
+          description: OK
+          content:
+            video/mp4: {}
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/gpio/pins/':
+    get:
+      operationId: 'get-gpio-pins'
+      tags:
+        - gpio
+      summary: Listing GPIO pins
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/PinInfoListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/gpio/pins/{pin}/':
+    get:
+      operationId: 'get-gpio-pin'
+      tags:
+        - gpio
+      summary: Getting GPIO pin details
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: pin
+          in: path
+          required: true
+          description: Pin identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/PinInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-gpio-pin'
+      tags:
+        - gpio
+      summary: Updating GPIO pin settings
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: pin
+          in: path
+          required: true
+          description: Pin identifier
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutputPinSettings'
+            example:
+              config:
+                type: custom
+                actions:
+                  - action: set
+                    value: false
+                  - action: delay
+                    delay: 300
+                  - action: set
+                    value: true
+                  - action: delay
+                    delay: 300
+                repeat: true
+                timeout: 300000
+                final_value: false
+      responses:
+        '200':
+          $ref: '#/components/responses/PinInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/gpio/groups/':
+    get:
+      operationId: 'get-gpio-pin-groups'
+      tags:
+        - gpio
+      summary: Listing GPIO pin groups
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/PinGroupInfoListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: 'create-gpio-pin-group'
+      tags:
+        - gpio
+      summary: Creating a new GPIO pin group
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: object
+                  properties:
+                    id:
+                      type: string
+                      description: Pin group identifier
+                      example: two-leds
+                - $ref: '#/components/schemas/PinGroupSettings'
+              required:
+                - id
+                - pins
+                - config
+      responses:
+        '201':
+          $ref: '#/components/responses/PinGroupCreatedResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/gpio/groups/{id}/':
+    get:
+      operationId: 'get-gpio-pin-group'
+      tags:
+        - gpio
+      summary: Getting GPIO pin group details
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Pin group identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/PinGroupInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-gpio-pin-group'
+      tags:
+        - gpio
+      summary: Updating GPIO pin group
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Pin group identifier
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PinGroupSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/PinGroupInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    delete:
+      operationId: 'delete-pin-group'
+      tags:
+        - gpio
+      summary: Deleting GPIO pin group
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `gpio`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Pin group identifier
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/storage/':
+    get:
+      operationId: 'list-storages'
+      tags:
+        - storage
+      summary: Listing available storages
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/StorageListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/storage/sd-card/':
+    get:
+      operationId: 'list-sd-cards'
+      tags:
+        - storage
+      summary: Listing available SD cards
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+      responses:
+        '200':
+          $ref: '#/components/responses/SDCardsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/storage/sd-card/{id}/':
+    get:
+      operationId: 'get-sd-card-info'
+      tags:
+        - storage
+      summary: Getting SD card info
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: SD card identifier
+          schema:
+            type: integer
+      responses:
+        '200':
+          $ref: '#/components/responses/SDCardResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/storage/sd-card/{id}/format/':
+    post:
+      operationId: 'format-sd-card'
+      tags:
+        - storage
+      summary: Formatting SD card
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: SD card identifier
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/ssh/':
+    get:
+      operationId: 'get-ssh-settings'
+      tags:
+        - ssh
+      summary: Getting SSH settings
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: 'update-ssh-settings'
+      tags:
+        - ssh
+      summary: Updating SSH settings
+      security:
+        - 'HTTP Digest': []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSHSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHSettingsResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/ssh/users/':
+    get:
+      operationId: 'get-ssh-users'
+      tags:
+        - ssh
+      summary: Listing SSH users
+      security:
+        - 'HTTP Digest': []
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHUserListResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/ssh/users/{username}/':
+    get:
+      operationId: 'get-ssh-user'
+      tags:
+        - ssh
+      summary: Getting SSH user details
+      security:
+        - 'HTTP Digest': []
+      description: |
+        The endpoint currently does not provide any additional information. It
+        may be extended in the future though.
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Username
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHUserInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+    put:
+      operationId: 'update-ssh-user'
+      tags:
+        - ssh
+      summary: Changing SSH user settings
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Username
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SSHUserSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/SSHUserInfoResponse'
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+components:
+  schemas:
+    PublicInformation:
+      type: object
+      properties:
+        device:
+          $ref: '#/components/schemas/PublicDeviceInformation'
+        initialized:
+          type: boolean
+          description: |
+            `false` indicates that the [Initial setup](#section/Initial-setup) is required.
+          example: true
+        apis:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicApiInformation'
+      example:
+        device:
+          board: acbd18db4cc2f85cedef654fccc4a4d8
+        initialized: false
+        apis:
+          - type: goodcam-nvr
+            transport: tcp
+            port: 80
+            root: '/api/v1/'
+            version: 1
+    PublicDeviceInformation:
+      type: object
+      properties:
+        board:
+          type: string
+          description: Hardware family identifier
+          example: acbd18db4cc2f85cedef654fccc4a4d8
+    BasePublicApiInformation:
+      type: object
+      properties:
+        type:
+          type: string
+          description: |
+            API kind. Possible values are:
+            * `goodcam-nvr` - GoodCam API as described in this documentation
+          enum:
+            - goodcam-nvr
+          example: goodcam-nvr
+    PublicGoodCamApiInformation:
+      allOf:
+        - $ref: '#/components/schemas/BasePublicApiInformation'
+        - type: object
+          properties:
+            transport:
+              type: string
+              description: |
+                Transport protocol. Possible values are:
+                * `tcp` - TCP protocol
+              enum:
+                - tcp
+              example: tcp
+            port:
+              type: integer
+              description: TCP port
+              example: 80
+            root:
+              type: string
+              description: API root
+              example: '/api/v1/'
+            version:
+              type: integer
+              description: API major version
+              example: 1
+    PublicApiInformation:
+      oneOf:
+        - $ref: '#/components/schemas/PublicGoodCamApiInformation'
+      discriminator:
+        propertyName: type
+        mapping:
+          goodcam-nvr: '#/components/schemas/PublicGoodCamApiInformation'
+    BasicInformation:
+      type: object
+      properties:
+        api_version:
+          type: string
+          description: Version of the API
+          example: '1.0.0'
+        timezone:
+          $ref: '#/components/schemas/Timezone'
+        firmware:
+          $ref: '#/components/schemas/FirmwareInformation'
+        features:
+          type: object
+          properties:
+            storage:
+              type: boolean
+              description: |
+                Indicates if the storage support and the
+                [corresponding API endpoints](#tag/storage) are available.
+              example: true
+            recording:
+              type: boolean
+              description: |
+                Indicates if the recording feature and the
+                [corresponding API endpoints](#tag/recording) are available.
+              example: true
+            media_buffer:
+              type: boolean
+              description: |
+                Indicates if the [media buffer feature](#tag/streaming) is
+                available. This property also implies `rtsp_20`.
+              example: true
+            rtsp_20:
+              type: boolean
+              description: |
+                Indicates if the RTSP/2.0 protocol is supported.
+              example: true
+            fragmented_mp4:
+              type: boolean
+              description: |
+                Indicates if the
+                [fragmented MP4 streaming](#operation/get-mp4-stream) is
+                available.
+              example: true
+            webrtc:
+              type: boolean
+              description: |
+                Indicates if the
+                [WebRTC streaming](#operation/web-rtc-signaling) is available.
+              example: true
+            cloud_client:
+              type: boolean
+              description: |
+                Indicates if the [cloud client](#tag/cloud) is available.
+              example: true
+            gpio:
+              type: boolean
+              description: |
+                Indicates if the [GPIO subsystem](#tag/gpio) is available.
+              example: true
+    FirmwareInformation:
+      type: object
+      properties:
+        board:
+          type: string
+          description: Hardware family identifier
+          example: acbd18db4cc2f85cedef654fccc4a4d8
+        version:
+          type: string
+          description: Firmware version
+          example: '1.0.0'
+        build:
+          type: string
+          description: Firmware build
+          example: '2021-07-12T13:44:18+00:00'
+    Timezone:
+      type: string
+      description: Device timezone in [POSIX format](https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html)
+      example: "CET-1CEST,M3.5.0/2,M10.5.0/3"
+    ErrorDescription:
+      type: object
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+      example:
+        error:
+          - name: video
+            error:
+              - name: codec
+                error: unsupported codec
+    ErrorVariant:
+      oneOf:
+        - $ref: '#/components/schemas/PlainError'
+        - $ref: '#/components/schemas/DetailedError'
+    PlainError:
+      type: string
+      description: Error description
+    DetailedError:
+      type: array
+      items:
+        oneOf:
+          - $ref: '#/components/schemas/NamedFieldError'
+          - $ref: '#/components/schemas/IndexedFieldError'
+    NamedFieldError:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of a field causing the error
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+    IndexedFieldError:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: Index of a field causing the error
+        error:
+          $ref: '#/components/schemas/ErrorVariant'
+    UserDetails:
+      type: object
+      properties:
+        username:
+          type: string
+          example: admin
+        digest_algorithm:
+          type: string
+          enum:
+            - md5
+            - sha256
+          example: md5
+    NetworkSettings:
+      type: object
+      properties:
+        device_name:
+          type: string
+          description: Name of the device (used as DNS-SD instance name)
+          example: My Camera
+    BaseNetworkInterfaceSettings:
+      type: object
+      properties:
+        mac_address:
+          type: string
+          description: |
+            Interface MAC address as a string containing six hexadecimal
+            numbers separated with ":"
+          example: 00:11:22:33:44:55
+        mode:
+          type: string
+          enum:
+            - static
+            - dhcp
+          description: |
+            Interface mode, the possible values are:
+            * `static` - for static IP address configuration
+            * `dhcp` - for DHCP configuration
+          example: static
+    BaseNetworkInterfaceSettingsRead:
+      allOf:
+        - type: object
+          properties:
+            name:
+              type: string
+              description: Name of the network interface
+              example: eth0
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettings'
+    BaseNetworkInterfaceSettingsWrite:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettings'
+    StaticNetworkInterfaceSettings:
+      type: object
+      properties:
+        ipv4_address:
+          type: string
+          description: IPv4 address of the network interface
+          example: 192.168.1.100
+        ipv4_mask:
+          type: string
+          description: IPv4 mask
+          example: 255.255.255.0
+        ipv4_gateway:
+          type: string
+          description: IPv4 gateway or `null` if the gateway is not set
+          example: 192.168.1.1
+        dns_servers:
+          type: array
+          description: |
+            A list of DNS servers. Each DNS server is represented by a
+            string containing an IP address.
+          example: ['192.168.1.1', '8.8.8.8']
+          items:
+            type: string
+    DHCPNetworkInterfaceSettings:
+      type: object
+      properties:
+        dns_from_dhcp:
+          type: boolean
+          description: |
+            Boolean flag indicating if the device is using DNS servers provided
+            by the DHCP server
+          example: true
+        custom_dns_servers:
+          type: array
+          items:
+            type: string
+          description: |
+            A list of custom DNS servers. Each DNS server is represented by a
+            string containing an IP address
+          example: ['192.168.1.1', '8.8.8.8']
+    StaticNetworkInterfaceSettingsRead:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsRead'
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettings'
+    DHCPNetworkInterfaceSettingsRead:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsRead'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettings'
+    StaticNetworkInterfaceSettingsWrite:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsWrite'
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettings'
+    DHCPNetworkInterfaceSettingsWrite:
+      allOf:
+        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsWrite'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettings'
+    NetworkInterfaceSettingsRead:
+      oneOf:
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettingsRead'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettingsRead'
+      discriminator:
+        propertyName: mode
+        mapping:
+          static: '#/components/schemas/StaticNetworkInterfaceSettingsRead'
+          dhcp: '#/components/schemas/DHCPNetworkInterfaceSettingsRead'
+    NetworkInterfaceSettingsWrite:
+      oneOf:
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettingsWrite'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettingsWrite'
+      discriminator:
+        propertyName: mode
+        mapping:
+          static: '#/components/schemas/StaticNetworkInterfaceSettingsWrite'
+          dhcp: '#/components/schemas/DHCPNetworkInterfaceSettingsWrite'
+    CloudClientSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates if the cloud client is enabled or not.
+          example: true
+        url:
+          type: string
+          format: url
+          description: URL of the cloud service.
+          example: https://proxy.goodcam.io:8888/
+    CloudClientInfo:
+      allOf:
+        - $ref: '#/components/schemas/CloudClientSettings'
+        - type: object
+          properties:
+            device_id:
+              type: string
+              description: Unique identifier of this device.
+              example: 6b1f16f1-ccf2-42d3-8087-5024793383d6
+            status:
+              type: string
+              enum:
+                - disabled
+                - connecting
+                - connected
+                - disconnected
+                - suspended
+              example: connected
+              description: |
+                Current status of the cloud client. Possible values are:
+                * `disabled` - The client is disabled.
+                * `connecting` - The client is trying to establish a new
+                  connection to the cloud service.
+                * `connected` - The client is connected to the cloud service
+                  and the device is ready for remote access.
+                * `disconnected` - The client is disconnected from the cloud
+                  service (e.g. due to unavailable network) but the client is
+                  still active and it will try to create a new connection as
+                  soon as possible.
+                * `suspended` - The client is disconnected from the cloud
+                  service and its operation has been suspended because the
+                  cloud service rejected the connection. This can happen for
+                  example if the device has not been paired with any cloud
+                  account yet and there is no pairing request for this device
+                  either.
+    BaseStreamSettings:
+      type: object
+      properties:
+        retention:
+          type: integer
+          minimum: 0
+          default: 0
+          description: |
+            Number of milliseconds to keep in the media buffer. If set to
+            `0`, the media buffer will be disabled for this stream. This
+            property is available only if the firmware supports the
+            [media buffer feature](#tag/streaming).
+          example: 10000
+        type:
+          type: string
+          description: |
+            Stream type. Possible values are:
+            * `rtsp` - RTSP stream
+          enum:
+            - rtsp
+          example: rtsp
+    BaseStreamInfo:
+      allOf:
+        - type: object
+          properties:
+            name:
+              type: string
+              description: Stream identifier
+              example: ch-01
+            urls:
+              type: array
+              items:
+                type: object
+                properties:
+                  format:
+                    type: string
+                    enum:
+                      - rtsp
+                      - mp4
+                    description: |
+                      Stream format. Possible values are:
+                      * `rtsp` - RTSP stream
+                      * `mp4` - fragmented MP4 stream
+                    example: rtsp
+                  url:
+                    type: string
+                    format: url
+                    description: Stream URL
+                    example: 'rtsp://192.168.1.10/ch-01'
+        - $ref: '#/components/schemas/BaseStreamSettings'
+    BaseStreamSettingsWrite:
+      allOf:
+        - type: object
+          properties:
+            rtsp_path:
+              type: string
+              description: |
+                This parameter can be used to configure the RTSP endpoint
+                associated with this stream; the string must start with "/"
+              example: '/ch-01'
+        - $ref: '#/components/schemas/BaseStreamSettings'
+    BaseStreamSettingsCreate:
+      allOf:
+        - type: object
+          properties:
+            name:
+              type: string
+              description: Stream identifier
+              example: ch-01
+        - $ref: '#/components/schemas/BaseStreamSettingsWrite'
+    RTSPStreamSettings:
+      type: object
+      properties:
+        source_url:
+          type: string
+          format: url
+          description: RTSP stream URL
+        transport_mode:
+          type: string
+          enum:
+            - prefer-tcp
+            - prefer-udp
+          default: prefer-tcp
+          description: |
+            RTP transport mode. Possible values are:
+            * `prefer-tcp` - RTP over RTSP (i.e. interleaved data) will be
+              the first choice
+            * `prefer-udp` - RTP over UDP will be the first choice
+        keep_alive_mode:
+          type: string
+          enum:
+            - auto
+            - always
+            - never
+          default: auto
+          description: |
+            RTSP keep-alive mode. Possible values are:
+            * `auto` - the device will decide whether to send keep-alive
+              requests
+            * `always` - keep-alive requests will be sent periodically
+            * `never` - keep-alive requests will never be sent
+      example:
+        source_url: 'rtsp://192.168.1.100/videoMain'
+        transport_mode: prefer-tcp
+        keep_alive_mode: auto
+    RTSPStreamInfo:
+      allOf:
+        - $ref: '#/components/schemas/BaseStreamInfo'
+        - $ref: '#/components/schemas/RTSPStreamSettings'
+    RTSPStreamSettingsWrite:
+      allOf:
+        - $ref: '#/components/schemas/BaseStreamSettingsWrite'
+        - $ref: '#/components/schemas/RTSPStreamSettings'
+    RTSPStreamSettingsCreate:
+      allOf:
+        - $ref: '#/components/schemas/BaseStreamSettingsCreate'
+        - $ref: '#/components/schemas/RTSPStreamSettings'
+      required:
+        - name
+        - type
+        - source_url
+    StreamInfo:
+      oneOf:
+        - $ref: '#/components/schemas/RTSPStreamInfo'
+      discriminator:
+        propertyName: type
+        mapping:
+          rtsp: '#/components/schemas/RTSPStreamInfo'
+    StreamSettingsWrite:
+      oneOf:
+        - $ref: '#/components/schemas/RTSPStreamSettingsWrite'
+      discriminator:
+        propertyName: type
+        mapping:
+          rtsp: '#/components/schemas/RTSPStreamSettingsWrite'
+    StreamSettingsCreate:
+      oneOf:
+        - $ref: '#/components/schemas/RTSPStreamSettingsCreate'
+      discriminator:
+        propertyName: type
+        mapping:
+          rtsp: '#/components/schemas/RTSPStreamSettingsCreate'
+    RecordingStorageBase:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - sd-card
+          description: |
+            Storage type. Possible values are:
+
+            * `sd-card` - SD card storage
+    SDCardRecordingStorage:
+      allOf:
+        - $ref: '#/components/schemas/RecordingStorageBase'
+        - type: object
+          properties:
+            slot:
+              type: integer
+              description: SD card identifier
+    RecordingStorage:
+      oneOf:
+        - $ref: '#/components/schemas/SDCardRecordingStorage'
+      discriminator:
+        propertyName: type
+        mapping:
+          sd-card: '#/components/schemas/SDCardRecordingStorage'
+      description: Recording storage
+    RecordingSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Set to `false` to stop the recording
+        stream:
+          type: string
+          description: ID of the stream that's supposed to be recorded
+        storage:
+          $ref: '#/components/schemas/RecordingStorage'
+    RecordingInfoBase:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Recording ID
+        enabled:
+          type: boolean
+          description: Set to `false` to stop the recording
+        stream:
+          type: string
+          description: ID of the stream that's supposed to be recorded
+        storage:
+          $ref: '#/components/schemas/RecordingStorage'
+        status:
+          type: string
+          enum:
+            - idle
+            - starting
+            - running
+            - error
+          description: |
+            Possible recording states:
+
+            * `idle` - the recording is not running
+            * `starting` - the recording is starting
+            * `running` - the recording is running
+            * `error` - the recording is in an error state (the actual error is
+                available in the `error` field)
+      example:
+        id: 426d4f5f-2e3d-4cda-b067-83b613d04c0e
+        enabled: true
+        stream: primary
+        storage:
+          type: sd-card
+          slot: 0
+        status: running
+    RecordingInfoIdle:
+      allOf:
+        - $ref: '#/components/schemas/RecordingInfoBase'
+    RecordingInfoStarting:
+      allOf:
+        - $ref: '#/components/schemas/RecordingInfoBase'
+    RecordingInfoRunning:
+      allOf:
+        - $ref: '#/components/schemas/RecordingInfoBase'
+    RecordingInfoError:
+      allOf:
+        - $ref: '#/components/schemas/RecordingInfoBase'
+        - type: object
+          properties:
+            error:
+              type: string
+              description: Error description
+    RecordingInfo:
+      oneOf:
+        - $ref: '#/components/schemas/RecordingInfoIdle'
+        - $ref: '#/components/schemas/RecordingInfoStarting'
+        - $ref: '#/components/schemas/RecordingInfoRunning'
+        - $ref: '#/components/schemas/RecordingInfoError'
+      discriminator:
+        propertyName: status
+        mapping:
+          idle: '#/components/schemas/RecordingInfoIdle'
+          starting: '#/components/schemas/RecordingInfoStarting'
+          running: '#/components/schemas/RecordingInfoRunning'
+          error: '#/components/schemas/RecordingInfoError'
+    BasePinAction:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - set
+            - delay
+          description: |
+            Pin action type.
+
+            Possible values are:
+            * `set` - to set a given pin value
+            * `delay` - to wait a given amount of time
+          example: set
+    SetPinValueAction:
+      allOf:
+        - $ref: '#/components/schemas/BasePinAction'
+        - type: object
+          properties:
+            value:
+              type: boolean
+              description: Pin value
+              example: true
+    DelayPinAction:
+      allOf:
+        - $ref: '#/components/schemas/BasePinAction'
+        - type: object
+          properties:
+            delay:
+              type: number
+              minimum: 0
+              description:
+                Amount of time (in milliseconds) to wait before continuing with
+                the next action.
+              example: 100
+    PinAction:
+      oneOf:
+        - $ref: '#/components/schemas/SetPinValueAction'
+        - $ref: '#/components/schemas/DelayPinAction'
+      discriminator:
+        propertyName: action
+        mapping:
+          set: '#/components/schemas/SetPinValueAction'
+          delay: '#/components/schemas/DelayPinAction'
+    BasePinConfig:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - fixed
+            - custom
+          description: |
+            Pin configuration variant.
+
+            Possible values are:
+            * `fixed` - fixed value
+            * `custom` - sequence of custom actions
+          example: fixed
+    FixedPinConfig:
+      allOf:
+        - $ref: '#/components/schemas/BasePinConfig'
+        - type: object
+          properties:
+            value:
+              type: boolean
+              description: Pin value
+              example: true
+    CustomPinConfig:
+      allOf:
+        - $ref: '#/components/schemas/BasePinConfig'
+        - type: object
+          properties:
+            actions:
+              type: array
+              items:
+                $ref: '#/components/schemas/PinAction'
+              description: Custom actions
+              example:
+                - action: set
+                  value: false
+                - action: delay
+                  delay: 300
+                - action: set
+                  value: true
+                - action: delay
+                  delay: 300
+            repeat:
+              type: boolean
+              description: If true, the actions will be repeated.
+              example: true
+            timeout:
+              type: number
+              minimum: 0
+              nullable: true
+              description: |
+                Optional timeout in milliseconds.
+
+                The actions will be stopped after a given amount of time.
+              example: 300000
+            initial_value:
+              type: boolean
+              nullable: true
+              description: |
+                Initial pin value to be set before starting the actions.
+              example: null
+            final_value:
+              type: boolean
+              nullable: true
+              description: |
+                Final value to be set after performing all the actions or after
+                the timeout.
+              example: false
+    PinConfig:
+      oneOf:
+        - $ref: '#/components/schemas/FixedPinConfig'
+        - $ref: '#/components/schemas/CustomPinConfig'
+      discriminator:
+        propertyName: type
+        mapping:
+          fixed: '#/components/schemas/FixedPinConfig'
+          custom: '#/components/schemas/CustomPinConfig'
+      description: Pin configuration
+    OutputPinSettings:
+      type: object
+      properties:
+        config:
+          $ref: '#/components/schemas/PinConfig'
+    BasePinInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Pin identifier
+          example: red-led
+        description:
+          type: string
+          description: Pin description
+          example: Red LED
+        type:
+          type: string
+          enum:
+            - in
+            - out
+          description: |
+            Pin type.
+
+            Possible values are:
+            * `in` - input pin
+            * `out` - output pin
+          example: out
+        value:
+          type: boolean
+          description: Current pin value
+          example: true
+    InputPinInfo:
+      allOf:
+        - $ref: '#/components/schemas/BasePinInfo'
+    OutputPinInfo:
+      allOf:
+        - $ref: '#/components/schemas/BasePinInfo'
+        - $ref: '#/components/schemas/OutputPinSettings'
+    PinInfo:
+      oneOf:
+        - $ref: '#/components/schemas/InputPinInfo'
+        - $ref: '#/components/schemas/OutputPinInfo'
+      discriminator:
+        propertyName: type
+        mapping:
+          in: '#/components/schemas/InputPinInfo'
+          out: '#/components/schemas/OutputPinInfo'
+      example:
+        id: red-led
+        description: Red LED
+        type: out
+        config:
+          type: custom
+          actions:
+            - action: set
+              value: false
+            - action: delay
+              delay: 300
+            - action: set
+              value: true
+            - action: delay
+              delay: 300
+          repeat: true
+          timeout: 300000
+          final_value: false
+        value: true
+    PinInfoList:
+      type: array
+      items:
+        $ref: '#/components/schemas/PinInfo'
+    BasePinGroupAction:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - set
+            - delay
+          description: |
+            Pin action type.
+
+            Possible values are:
+            * `set` - to set given pin values
+            * `delay` - to wait a given amount of time
+          example: set
+    SetPinGroupValuesAction:
+      allOf:
+        - $ref: '#/components/schemas/BasePinGroupAction'
+        - type: object
+          properties:
+            values:
+              type: object
+              description: |
+                Pin values.
+
+                Each property can be a pin identifier and all values must be
+                booleans indicating the desired pin values. Only pin
+                identifiers belonging to the group are allowed here.
+              example:
+                red-led: true
+                blue-led: false
+    DelayPinGroupAction:
+      allOf:
+        - $ref: '#/components/schemas/BasePinGroupAction'
+        - type: object
+          properties:
+            delay:
+              type: number
+              minimum: 0
+              description:
+                Amount of time (in milliseconds) to wait before continuing with
+                the next action.
+              example: 100
+    PinGroupAction:
+      oneOf:
+        - $ref: '#/components/schemas/SetPinGroupValuesAction'
+        - $ref: '#/components/schemas/DelayPinGroupAction'
+      discriminator:
+        propertyName: action
+        mapping:
+          set: '#/components/schemas/SetPinGroupValuesAction'
+          delay: '#/components/schemas/DelayPinGroupAction'
+    BasePinGroupConfig:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - fixed
+            - custom
+          description: |
+            Pin group configuration variant.
+
+            Possible values are:
+            * `fixed` - fixed values
+            * `custom` - sequence of custom actions
+          example: fixed
+    FixedPinGroupConfig:
+      allOf:
+        - $ref: '#/components/schemas/BasePinGroupConfig'
+        - type: object
+          properties:
+            values:
+              type: object
+              description: |
+                Pin values.
+
+                Each property can be a pin identifier and all values must be
+                booleans indicating the desired pin values. Only pin
+                identifiers belonging to the group are allowed here.
+              example:
+                blue-led: false
+                red-led: true
+    CustomPinGroupConfig:
+      allOf:
+        - $ref: '#/components/schemas/BasePinGroupConfig'
+        - type: object
+          properties:
+            actions:
+              type: array
+              items:
+                $ref: '#/components/schemas/PinGroupAction'
+              description: Custom actions
+              example:
+                - action: set
+                  values:
+                    blue-led: true
+                    red-led: false
+                - action: delay
+                  delay: 300
+                - action: set
+                  values:
+                    blue-led: false
+                    red-led: true
+                - action: delay
+                  delay: 300
+            repeat:
+              type: boolean
+              description: If true, the actions will be repeated.
+              example: true
+            timeout:
+              type: number
+              minimum: 0
+              nullable: true
+              description: |
+                Optional timeout in milliseconds.
+
+                The actions will be stopped after a given amount of time.
+              example: 300000
+            initial_values:
+              type: object
+              nullable: true
+              description: |
+                Initial pin values to be set before starting the actions.
+
+                Each property can be a pin identifier and all values must be
+                booleans indicating the desired pin values. Only pin
+                identifiers belonging to the group are allowed here.
+              example: null
+            final_values:
+              type: object
+              nullable: true
+              description: |
+                Final pin values to be set after performing all actions or
+                after the timeout.
+
+                Each property can be a pin identifier and all values must be
+                booleans indicating the desired pin values. Only pin
+                identifiers belonging to the group are allowed here.
+              example: null
+    PinGroupConfig:
+      oneOf:
+        - $ref: '#/components/schemas/FixedPinGroupConfig'
+        - $ref: '#/components/schemas/CustomPinGroupConfig'
+      discriminator:
+        propertyName: type
+        mapping:
+          fixed: '#/components/schemas/FixedPinGroupConfig'
+          custom: '#/components/schemas/CustomPinGroupConfig'
+      description: Pin group configuration
+      example:
+        type: custom
+        actions:
+          - action: set
+            values:
+              blue-led: true
+              red-led: false
+          - action: delay
+            delay: 300
+          - action: set
+            values:
+              blue-led: false
+              red-led: true
+          - action: delay
+            delay: 300
+        repeat: true
+        timeout: 300000
+        final_values:
+          blue-led: false
+          red-led: false
+    PinGroupSettings:
+      type: object
+      properties:
+        pins:
+          type: array
+          items:
+            type: string
+          description: |
+            A list of identifiers of output pins belonging to this group
+          example:
+            - blue-led
+            - red-led
+        config:
+          $ref: '#/components/schemas/PinGroupConfig'
+    PinGroupInfo:
+      allOf:
+        - type: object
+          properties:
+            id:
+              type: string
+              description: Pin group identifier
+              example: two-leds
+        - $ref: '#/components/schemas/PinGroupSettings'
+        - type: object
+          properties:
+            values:
+              type: object
+              description: |
+                Current pin values.
+
+                Each property will be a pin identifier belonging to this group
+                and all values will be booleans indicating the current pin
+                value.
+              example:
+                blue-led: false
+                red-led: true
+    PinGroupInfoList:
+      type: array
+      items:
+        $ref: '#/components/schemas/PinGroupInfo'
+    BaseStorageInfo:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - sd-card
+          description: |
+            Storage type.
+
+            Possible values are:
+            * `sd-card` - SD card
+          example: sd-card
+    SDCardStorageInfo:
+      allOf:
+        - $ref: '#/components/schemas/BaseStorageInfo'
+        - $ref: '#/components/schemas/SDCardInfo'
+    StorageInfo:
+      oneOf:
+        - $ref: '#/components/schemas/SDCardStorageInfo'
+      discriminator:
+        propertyName: type
+        mapping:
+          sd-card: '#/components/schemas/SDCardStorageInfo'
+    SDCardInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: SD card identifier
+          example: 0
+        capacity:
+          type: integer
+          description: SD card capacity in bytes
+          example: 34359738368
+        available:
+          type: integer
+          description: The amount of available space in bytes
+          example: 17179869184
+    SSHSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Indicates if the SSH service is enabled
+          example: false
+    SSHUserInfo:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Username
+          example: root
+    SSHUserSettings:
+      type: object
+      properties:
+        password:
+          type: string
+          description: Password
+          example: SuperSecretPassword
+  responses:
+    Uninitialized:
+      description: Uninitialized device
+    Unauthorized:
+      description: Missing or invalid credentials
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDescription'
+    BadGateway:
+      description: Bad gateway
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDescription'
+    PublicInformationResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicInformation'
+    BasicInformationResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BasicInformation'
+    FirmwareInformationResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FirmwareInformation'
+    UserListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/UserDetails'
+    UserCreatedResponse:
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserDetails'
+    UserDetailsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserDetails'
+    AccessTokenResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              token:
+                type: string
+                description: Access token
+                example: '...'
+    NetworkSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NetworkSettings'
+    NetworkInterfaceListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/NetworkInterfaceSettingsRead'
+    NetworkInterfaceSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NetworkInterfaceSettingsRead'
+    CloudClientInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CloudClientInfo'
+    StreamListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/StreamInfo'
+    StreamInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StreamInfo'
+    RecordingCreatedResponse:
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RecordingInfo'
+    RecordingInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RecordingInfo'
+    RecordingListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/RecordingInfo'
+    RecordingTimelineResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                start:
+                  type: string
+                  format: date-time
+                  description: Start of a continuous video segment
+                end:
+                  type: string
+                  format: date-time
+                  description: End of a continuous video segment
+            example:
+              - start: '2024-03-26T10:00:00.000Z'
+                end: '2024-03-26T13:22:33.123Z'
+              - start: '2024-03-26T13:29:13.13Z'
+                end: '2024-03-27T10:00:00.000Z'
+    PinInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinInfo'
+    PinInfoListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinInfoList'
+    PinGroupCreatedResponse:
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinGroupInfo'
+    PinGroupInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinGroupInfo'
+    PinGroupInfoListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PinGroupInfoList'
+    StorageListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/StorageInfo'
+    SDCardsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/SDCardInfo'
+    SDCardResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SDCardInfo'
+    SSHSettingsResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SSHSettings'
+    SSHUserListResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/SSHUserInfo'
+    SSHUserInfoResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SSHUserInfo'
+  securitySchemes:
+    'HTTP Digest':
+      type: http
+      scheme: digest
