@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -10,15 +11,22 @@
             margin: 1rem;
         }
 
-        *, body, html {
+        *,
+        body,
+        html {
             box-sizing: border-box;
         }
 
-        label, input, select, button {
+        label,
+        input,
+        select,
+        button {
             display: block;
         }
 
-        input, select, button {
+        input,
+        select,
+        button {
             margin-bottom: 1rem;
         }
 
@@ -77,8 +85,34 @@
         .hidden {
             display: none;
         }
+
+        .error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(220, 38, 38, 0.9);
+            color: white;
+            padding: 1.5rem 2rem;
+            border-radius: 0.5rem;
+            max-width: 80%;
+            text-align: center;
+            z-index: 300;
+        }
+
+        .error-message button {
+            margin-top: 1rem;
+            padding: 0.5rem 1rem;
+            background: white;
+            color: rgb(220, 38, 38);
+            border: none;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body>
     <!--
         A bit of a boilerplate to allow changing the camera IP address and
@@ -133,8 +167,13 @@
     <div class="video-wrapper">
         <div class="video-wrapper-inner">
             <div class="overlay">
+                <div id="error-message" class="error-message hidden">
+                    <div id="error-text"></div>
+                    <button id="retry-button" type="button">Retry Connection</button>
+                </div>
                 <button id="play-button" class="play-button hidden" type="button">
-                    <svg height="640" width="512" version="1.1" id="svg4" viewBox="0 0 512 640" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+                    <svg height="640" width="512" version="1.1" id="svg4" viewBox="0 0 512 640"
+                        xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
                         <defs id="defs8" />
                         <path d="M 0,0 512,320 0,640 Z" id="path2" />
                     </svg>
@@ -235,7 +274,7 @@
         })();
     </script>
     <script type="module">
-        (function() {
+        (function () {
             // add your STUN servers here
             const stunServers = [
                 'stun.goodcam.io:3478',
@@ -263,6 +302,9 @@
             const form = document.getElementById('camera-info');
             const video = document.getElementById('my-video');
             const play = document.getElementById('play-button');
+            const errorMessage = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            const retryButton = document.getElementById('retry-button');
             const cloudConnectionInfo = document.getElementById('cloud-connection-info');
             const directConnectionInfo = document.getElementById('direct-connection-info');
 
@@ -272,6 +314,16 @@
             const ipAddress = form['ip-address'];
             const stream = form['stream'];
             const update = form['update'];
+
+            function showError(message) {
+                errorText.textContent = message;
+                errorMessage.classList.remove('hidden');
+                play.classList.add('hidden');
+            }
+
+            function hideError() {
+                errorMessage.classList.add('hidden');
+            }
 
             // fill in the form
             connection.value = settings['connection'];
@@ -323,16 +375,23 @@
             }
 
             function createPlayer() {
+                hideError();
+
                 let promise = (async () => {
                     try {
                         const url = await getStreamUrl();
-                        const player = new VideoPlayer(video, play);
+                        const player = new VideoPlayer(video, play, (err) => {
+                            console.error('Streaming session error', err);
+                            showError('Streaming connection lost: ' + err.message);
+                        });
 
                         player.play(url, stunServers);
 
                         return player;
                     } catch (e) {
                         console.error('unable to create player', e);
+                        showError('Failed to initialize player: ' + e.message);
+                        return null;
                     }
                 })();
 
@@ -388,9 +447,15 @@
                 play.classList.add('hidden');
             });
 
+            retryButton.addEventListener('click', async (e) => {
+                player.stop();
+                player = createPlayer();
+            });
+
             // hide input fields that should not be visible
             connection.dispatchEvent(new Event('change'));
         })();
     </script>
 </body>
+
 </html>
