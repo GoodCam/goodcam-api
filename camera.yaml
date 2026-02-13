@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam API
-  version: '1.18.0'
+  version: '1.19.0'
   description: |
     GoodCam devices provide a REST API, RTSP server and they are also able to
     advertise themselves in a local network environment using mDNS and DNS-SD.
@@ -996,9 +996,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NetworkInterfaceSettingsWrite'
+              $ref: '#/components/schemas/NetworkInterfaceSettings'
             example:
-              ipv4_address: 192.168.1.10
+              ipv4_address: '192.168.1.10'
       responses:
         '200':
           $ref: '#/components/responses/NetworkInterfaceSettingsResponse'
@@ -2818,15 +2818,9 @@ components:
           type: string
           description: Name of the device (used as DNS-SD instance name)
           example: My Camera
-    BaseNetworkInterfaceSettings:
+    CommonNetworkInterfaceBase:
       type: object
       properties:
-        mac_address:
-          type: string
-          description: |
-            Interface MAC address as a string containing six hexadecimal
-            numbers separated with ":"
-          example: 00:11:22:33:44:55
         mode:
           type: string
           enum:
@@ -2837,7 +2831,22 @@ components:
             * `static` - for static IP address configuration
             * `dhcp` - for DHCP configuration
           example: static
-    BaseNetworkInterfaceSettingsRead:
+    CommonNetworkInterfaceSettings:
+      allOf:
+        - type: object
+          properties:
+            mac_address:
+              type: string
+              nullable: true
+              description: |
+                Interface MAC address as a string containing six hexadecimal
+                numbers separated with ":". Use `null` to reset the MAC address
+                to the default value.
+              example: 00:11:22:33:44:55
+            wifi:
+              $ref: '#/components/schemas/WiFiSettingsWrite'
+        - $ref: '#/components/schemas/CommonNetworkInterfaceBase'
+    CommonNetworkInterfaceInfo:
       allOf:
         - type: object
           properties:
@@ -2845,40 +2854,58 @@ components:
               type: string
               description: Name of the network interface
               example: eth0
+            mac_address:
+              type: string
+              description: |
+                Interface MAC address as a string containing six hexadecimal
+                numbers separated with ":"
+              example: 00:11:22:33:44:55
             wifi:
               $ref: '#/components/schemas/WiFiSettingsRead'
-        - $ref: '#/components/schemas/BaseNetworkInterfaceSettings'
-    BaseNetworkInterfaceSettingsWrite:
-      allOf:
-        - type: object
-          properties:
-            wifi:
-              $ref: '#/components/schemas/WiFiSettingsWrite'
-        - $ref: '#/components/schemas/BaseNetworkInterfaceSettings'
-    StaticNetworkInterfaceSettings:
+        - $ref: '#/components/schemas/CommonNetworkInterfaceBase'
+    StaticNetworkInterfaceBase:
       type: object
       properties:
         ipv4_address:
           type: string
           description: IPv4 address of the network interface
-          example: 192.168.1.100
+          example: '192.168.1.100'
         ipv4_mask:
           type: string
           description: IPv4 mask
-          example: 255.255.255.0
+          example: '255.255.255.0'
         ipv4_gateway:
           type: string
+          nullable: true
           description: IPv4 gateway or `null` if the gateway is not set
-          example: 192.168.1.1
+          example: '192.168.1.1'
         dns_servers:
           type: array
           description: |
-            A list of DNS servers. Each DNS server is represented by a
-            string containing an IP address.
+            A list of DNS servers. Each DNS server is represented by a string
+            containing an IP address.
           example: ['192.168.1.1', '8.8.8.8']
           items:
             type: string
-    DHCPNetworkInterfaceSettings:
+    StaticNetworkInterfaceSettings:
+      allOf:
+        - $ref: '#/components/schemas/CommonNetworkInterfaceSettings'
+        - $ref: '#/components/schemas/StaticNetworkInterfaceBase'
+    StaticNetworkInterfaceInfo:
+      allOf:
+        - $ref: '#/components/schemas/CommonNetworkInterfaceInfo'
+        - $ref: '#/components/schemas/StaticNetworkInterfaceBase'
+      example:
+        name: eth0
+        mac_address: '00:11:22:33:44:55'
+        wifi:
+          mode: ap
+        mode: static
+        ipv4_address: '192.168.1.100'
+        ipv4_mask: '255.255.255.0'
+        ipv4_gateway: null
+        dns_servers: []
+    DHCPNetworkInterfaceBase:
       type: object
       properties:
         dns_from_dhcp:
@@ -2893,42 +2920,62 @@ components:
             type: string
           description: |
             A list of custom DNS servers. Each DNS server is represented by a
-            string containing an IP address
+            string containing an IP address.
           example: ['192.168.1.1', '8.8.8.8']
-    StaticNetworkInterfaceSettingsRead:
+    DHCPNetworkInterfaceSettings:
       allOf:
-        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsRead'
-        - $ref: '#/components/schemas/StaticNetworkInterfaceSettings'
-    DHCPNetworkInterfaceSettingsRead:
+        - $ref: '#/components/schemas/CommonNetworkInterfaceSettings'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceBase'
+    DHCPNetworkInterfaceInfo:
       allOf:
-        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsRead'
-        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettings'
-    StaticNetworkInterfaceSettingsWrite:
-      allOf:
-        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsWrite'
-        - $ref: '#/components/schemas/StaticNetworkInterfaceSettings'
-    DHCPNetworkInterfaceSettingsWrite:
-      allOf:
-        - $ref: '#/components/schemas/BaseNetworkInterfaceSettingsWrite'
-        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettings'
-    NetworkInterfaceSettingsRead:
+        - $ref: '#/components/schemas/CommonNetworkInterfaceInfo'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceBase'
+        - type: object
+          properties:
+            ipv4_address:
+              type: string
+              nullable: true
+              description: |
+                Current IPv4 address of the network interface or `null` if a
+                valid IPv4 address hasn't been obtained from the DHCP server
+                yet.
+              example: '192.168.1.100'
+            ipv4_mask:
+              type: string
+              nullable: true
+              description: |
+                IPv4 mask or `null` if a valid IPv4 address hasn't been
+                obtained from the DHCP server yet.
+              example: '255.255.255.0'
+      example:
+        name: eth0
+        mac_address: '00:11:22:33:44:55'
+        wifi:
+          mode: client
+          ssid: my-network
+        mode: dhcp
+        dns_from_dhcp: true
+        custom_dns_servers: []
+        ipv4_address: '192.168.1.100'
+        ipv4_mask: '255.255.255.0'
+    NetworkInterfaceSettings:
       oneOf:
-        - $ref: '#/components/schemas/StaticNetworkInterfaceSettingsRead'
-        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettingsRead'
+        - $ref: '#/components/schemas/StaticNetworkInterfaceSettings'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettings'
       discriminator:
         propertyName: mode
         mapping:
-          static: '#/components/schemas/StaticNetworkInterfaceSettingsRead'
-          dhcp: '#/components/schemas/DHCPNetworkInterfaceSettingsRead'
-    NetworkInterfaceSettingsWrite:
+          static: '#/components/schemas/StaticNetworkInterfaceSettings'
+          dhcp: '#/components/schemas/DHCPNetworkInterfaceSettings'
+    NetworkInterfaceInfo:
       oneOf:
-        - $ref: '#/components/schemas/StaticNetworkInterfaceSettingsWrite'
-        - $ref: '#/components/schemas/DHCPNetworkInterfaceSettingsWrite'
+        - $ref: '#/components/schemas/StaticNetworkInterfaceInfo'
+        - $ref: '#/components/schemas/DHCPNetworkInterfaceInfo'
       discriminator:
         propertyName: mode
         mapping:
-          static: '#/components/schemas/StaticNetworkInterfaceSettingsWrite'
-          dhcp: '#/components/schemas/DHCPNetworkInterfaceSettingsWrite'
+          static: '#/components/schemas/StaticNetworkInterfaceInfo'
+          dhcp: '#/components/schemas/DHCPNetworkInterfaceInfo'
     WiFiSettingsBase:
       type: object
       properties:
@@ -2962,6 +3009,7 @@ components:
               description: Password for the network (optional).
               example: secret
     WiFiSettingsRead:
+      description: WiFi settings
       oneOf:
         - $ref: '#/components/schemas/WiFiAccessPointSettings'
         - $ref: '#/components/schemas/WiFiClientSettingsRead'
@@ -2971,6 +3019,7 @@ components:
           ap: '#/components/schemas/WiFiAccessPointSettings'
           client: '#/components/schemas/WiFiClientSettingsRead'
     WiFiSettingsWrite:
+      description: WiFi settings
       oneOf:
         - $ref: '#/components/schemas/WiFiAccessPointSettings'
         - $ref: '#/components/schemas/WiFiClientSettingsWrite'
@@ -4389,13 +4438,13 @@ components:
           schema:
             type: array
             items:
-              $ref: '#/components/schemas/NetworkInterfaceSettingsRead'
+              $ref: '#/components/schemas/NetworkInterfaceInfo'
     NetworkInterfaceSettingsResponse:
       description: OK
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/NetworkInterfaceSettingsRead'
+            $ref: '#/components/schemas/NetworkInterfaceInfo'
     CloudClientInfoResponse:
       description: OK
       content:
