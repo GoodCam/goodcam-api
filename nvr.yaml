@@ -1112,8 +1112,7 @@ paths:
             example:
               stream: primary
               storage:
-                type: sd-card
-                slot: 0
+                type: internal
       responses:
         '201':
           $ref: '#/components/responses/RecordingCreatedResponse'
@@ -1175,8 +1174,7 @@ paths:
             example:
               stream: primary
               storage:
-                type: sd-card
-                slot: 0
+                type: internal
       responses:
         '200':
           $ref: '#/components/responses/RecordingInfoResponse'
@@ -1684,6 +1682,10 @@ paths:
           for limited redundancy, better performance and more efficient use of
           storage space
 
+        *Note: The operation is synchronous but keep in mind that it can take
+        some time to complete depending on the disks. Usually, it's just a few
+        seconds.*
+
         ### Linear arrays
 
         Linear arrays let you use all the available storage space, but they
@@ -1790,6 +1792,10 @@ paths:
         If the total size of the array increases (e.g. after increasing the
         number of disks in a RAID 5 array), you can use this endpoint to expand
         the filesystem to use the additional space.
+
+        *Note: The operation is synchronous but keep in mind that it can take
+        some time to complete depending on the disks. Usually, it's less than
+        a minute.*
       responses:
         '204':
           description: No Content
@@ -1823,6 +1829,11 @@ paths:
 
         All new disks added to the array must have the same or larger capacity
         than the smallest disk currently in the array.
+
+        *Note: The operation is synchronous. However, if the array starts using
+        the spare disk immediately for recovery, the recovery progress can be
+        monitored by polling the
+        [internal storage info](#operation/get-internal-storage-info).*
       requestBody:
         content:
           application/json:
@@ -1863,6 +1874,8 @@ paths:
         degraded and, therefore, more vulnerable to disk failures. It isn't
         allowed to remove the only healthy disk from a RAID 1 array or any
         healthy disk from a RAID 5 array when it's already degraded.
+
+        *Note: The operation is synchronous.*
       requestBody:
         content:
           application/json:
@@ -1913,6 +1926,10 @@ paths:
         have a RAID 1 array with three healthy disks and you wish to reduce the
         number of disks to two, you need to remove one of the disks first
         (using the [this endpoint](#operation/remove-internal-storage-disk)).
+
+        *Note: The operation is asynchronous. The progress can be monitored by
+        polling the
+        [internal storage info](#operation/get-internal-storage-info).*
       requestBody:
         content:
           application/json:
@@ -1927,7 +1944,7 @@ paths:
               required:
                 - disks
               example:
-                size: 2
+                disks: 2
       responses:
         '204':
           description: No Content
@@ -1955,6 +1972,8 @@ paths:
         not expand the filesystem. You'll need to use the
         [filesystem expansion endpoint](#operation/expand-internal-storage-fs)
         to do that. The disk array must be idle to perform the expansion.
+
+        *Note: The operation is synchronous.*
       responses:
         '204':
           description: No Content
@@ -2700,26 +2719,21 @@ components:
         type:
           type: string
           enum:
-            - sd-card
+            - internal
           description: |
             Storage type. Possible values are:
 
-            * `sd-card` - SD card storage
-    SDCardRecordingStorage:
+            * `internal` - Internal storage
+    InternalRecordingStorage:
       allOf:
         - $ref: '#/components/schemas/RecordingStorageBase'
-        - type: object
-          properties:
-            slot:
-              type: integer
-              description: SD card identifier
     RecordingStorage:
       oneOf:
-        - $ref: '#/components/schemas/SDCardRecordingStorage'
+        - $ref: '#/components/schemas/InternalRecordingStorage'
       discriminator:
         propertyName: type
         mapping:
-          sd-card: '#/components/schemas/SDCardRecordingStorage'
+          internal: '#/components/schemas/InternalRecordingStorage'
       description: Recording storage
     RecordingSettings:
       type: object
@@ -2767,8 +2781,7 @@ components:
         enabled: true
         stream: primary
         storage:
-          type: sd-card
-          slot: 0
+          type: internal
         status: running
     RecordingInfoIdle:
       allOf:
