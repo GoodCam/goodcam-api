@@ -1613,12 +1613,12 @@ paths:
           $ref: '#/components/responses/Uninitialized'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  '/v1/storage/sd-card/':
+  '/v1/storage/internal/':
     get:
-      operationId: 'list-sd-cards'
+      operationId: 'get-internal-storage-info'
       tags:
         - storage
-      summary: Listing available SD cards
+      summary: Getting internal storage info
       security:
         - 'HTTP Digest': []
       description: |
@@ -1626,56 +1626,170 @@ paths:
         [feature](#operation/get-basic-info) is indicated.
       responses:
         '200':
-          $ref: '#/components/responses/SDCardsResponse'
+          $ref: '#/components/responses/InternalStorageResponse'
         '303':
           $ref: '#/components/responses/Uninitialized'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  '/v1/storage/sd-card/{id}/':
+  '/v1/storage/internal/disk/{slot}/':
     get:
-      operationId: 'get-sd-card-info'
+      operationId: 'get-internal-storage-extended-disk-info'
       tags:
         - storage
-      summary: Getting SD card info
+      summary: Getting detailed disk info
       security:
         - 'HTTP Digest': []
       description: |
         This endpoint is available only if the `storage`
         [feature](#operation/get-basic-info) is indicated.
       parameters:
-        - name: id
+        - name: slot
           in: path
           required: true
-          description: SD card identifier
+          description: Disk slot identifier
           schema:
             type: integer
       responses:
         '200':
-          $ref: '#/components/responses/SDCardResponse'
+          $ref: '#/components/responses/ExtendedDiskInfoResponse'
         '303':
           $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           description: Not Found
-  '/v1/storage/sd-card/{id}/format/':
+  '/v1/storage/internal/format/':
     post:
-      operationId: 'format-sd-card'
+      operationId: 'format-internal-storage'
       tags:
         - storage
-      summary: Formatting SD card
+      summary: Formatting the internal storage
       security:
         - 'HTTP Digest': []
       description: |
         This endpoint is available only if the `storage`
         [feature](#operation/get-basic-info) is indicated.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: SD card identifier
-          schema:
-            type: integer
+
+        The whole internal storage is viewed as a single space. Disks can be
+        arranged in a RAID array. The following RAID levels are supported:
+
+        * **linear** - all disks are concatenated together to form a single
+          large storage
+        * **RAID 0** - similar to `linear`, but data is striped across all
+          disks for better performance
+        * **RAID 1** - data is mirrored across all disks for redundancy
+        * **RAID 5** - data and parity information is striped across all disks
+          for limited redundancy, better performance and more efficient use of
+          storage space
+
+        ### Linear arrays
+
+        Linear arrays let you use all the available storage space, but they
+        don't provide any redundancy or performance benefits. They are suitable
+        for non-critical use cases where maximizing storage capacity is more
+        important than reliability or performance. **If one disk in a linear
+        array fails, the whole array fails as well and all data in the array
+        will be lost.**
+
+        Linear arrays can be also extended by adding more disks to the array.
+        However, removing disks without re-formatting is not supported.
+
+        ### RAID 0 arrays
+
+        RAID 0 arrays provide better performance by striping data across all
+        disks, but they don't provide any redundancy. They are suitable for
+        non-critical use cases where performance is more important than
+        reliability. **If one disk in a RAID 0 array fails, the whole array
+        fails as well and all data in the array will be lost.**
+
+        We do not support any non-destructive size/layout changes for RAID 0
+        arrays. All these changes require re-formatting the array.
+
+        ### RAID 1 arrays
+
+        RAID 1 arrays provide redundancy by mirroring data across all disks.
+        They are suitable for NVRs with only two disk slots where redundancy
+        is required. **A RAID 1 array can tolerate failure of all but one
+        disk.** The total storage capacity of a RAID 1 array is equal to the
+        capacity of the smallest disk in the array.
+
+        As long as there is at least one healthy disk in the array, you can
+        add/remove disks and change the size of the array without
+        re-formatting. However, you can only add disks that have the same or
+        larger capacity than the smallest disk currently in the array. You can
+        also create a RAID 1 array with only a single disk and add more disks
+        to the array later. However, keep in mind that until you increase size
+        of the array to at least two disks, there will be no redundancy and the
+        array will be vulnerable to disk failures just like a linear or RAID 0
+        array.
+
+        ### RAID 5 arrays
+
+        RAID 5 arrays provide limited redundancy by striping data and parity
+        information across all disks. They are suitable for NVRs with three or
+        more disk slots where redundancy is required. You can also use RAID 5
+        on devices with only two disk slots, but there will be no additional
+        benefits over RAID 1 in this case. (You cannot create a RAID 5 array
+        with less than two disks.) **A RAID 5 array can tolerate failure of one
+        disk.** The total storage capacity of a RAID 5 array is equal to the
+        capacity of the smallest disk in the array multiplied by the number of
+        disks in the array minus one.
+
+        You can add/remove spare disks freely without re-formatting. However,
+        when changing the size of the array, you can only increase the number
+        of disks in the array. Reducing the number of disks in a RAID 5 array
+        requires re-formatting. All disks added to the array must have the same
+        or larger capacity than the smallest disk currently in the array.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                level:
+                  default: raid-1
+                  nullable: true
+                  allOf:
+                    - $ref: '#/components/schemas/RaidLevel'
+                disks:
+                  type: array
+                  description: |
+                    A list of disks that should be included in the array. All
+                    available disks will be used if the field is `null`, empty
+                    or not provided.
+                  nullable: true
+                  items:
+                    type: integer
+                    description: Disk slot identifier
+              example:
+                level: raid-1
+                disks: [0, 1]
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/storage/internal/expand-fs/':
+    post:
+      operationId: 'expand-internal-storage-fs'
+      tags:
+        - storage
+      summary: Expanding the internal storage filesystem
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+
+        If the total size of the array increases (e.g. after increasing the
+        number of disks in a RAID 5 array), you can use this endpoint to expand
+        the filesystem to use the additional space.
       responses:
         '204':
           description: No Content
@@ -1683,8 +1797,173 @@ paths:
           $ref: '#/components/responses/Uninitialized'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Not Found
+  '/v1/storage/internal/add-disk/':
+    post:
+      operationId: 'add-internal-storage-disk'
+      tags:
+        - storage
+      summary: Adding a disk to the internal storage array
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+
+        This operation can be used to expand a linear array or to add a *spare*
+        disk to a RAID 1 or RAID 5 array. RAID 0 arrays are not supported.
+
+        When adding a spare disk to a RAID 1 or RAID 5 array, the disk can be
+        used immediately by the array if the array is *degraded* (i.e. there is
+        at least one failed/missing disk for the array to be fully
+        operational). Otherwise, the disk will be added as a spare and won't be
+        used until another disk in the array fails or gets removed. Spare disks
+        can be also used when increasing the size of the array (see
+        [resizing the internal storage array](#operation/resize-internal-storage-array)
+        for more info).
+
+        All new disks added to the array must have the same or larger capacity
+        than the smallest disk currently in the array.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slot:
+                  type: integer
+                  description: Disk slot identifier
+              required:
+                - slot
+              example:
+                slot: 1
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/storage/internal/remove-disk/':
+    post:
+      operationId: 'remove-internal-storage-disk'
+      tags:
+        - storage
+      summary: Removing a disk from the internal storage array
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+
+        This operation can be used for removing disks from RAID 1 and RAID 5
+        arrays. You can remove any disks (spare, failed or healthy), but keep
+        in mind that removing healthy disks may cause the array to become
+        degraded and, therefore, more vulnerable to disk failures. It isn't
+        allowed to remove the only healthy disk from a RAID 1 array or any
+        healthy disk from a RAID 5 array when it's already degraded.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slot:
+                  type: integer
+                  description: Disk slot identifier
+              required:
+                - slot
+              example:
+                slot: 1
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/storage/internal/resize-array/':
+    post:
+      operationId: 'resize-internal-storage-array'
+      tags:
+        - storage
+      summary: Resizing the internal storage array
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+
+        You can use this endpoint to change the number of active disks in a
+        RAID 1 or RAID 5 array. However, for RAID 5 arrays, it is only possible
+        to increase the number of disks. The disk array must be idle to perform
+        any resizing operation.
+
+        When increasing the number of disks in a RAID 1 or RAID 5 array, you
+        need to make sure there are enough spare disks available. For example,
+        if you want to increase the number of disks in your array by two,
+        there must be at least two spare disks available before you can perform
+        the operation.
+
+        When reducing the number of disks, you can only reduce them to the
+        number of healthy disks currently in the array. For example, if you
+        have a RAID 1 array with three healthy disks and you wish to reduce the
+        number of disks to two, you need to remove one of the disks first
+        (using the [this endpoint](#operation/remove-internal-storage-disk)).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                disks:
+                  type: number
+                  description: |
+                    Number of disks in the RAID array when the array is fully
+                    operational
+              required:
+                - disks
+              example:
+                size: 2
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/v1/storage/internal/expand-array/':
+    post:
+      operationId: 'expand-internal-storage-array'
+      tags:
+        - storage
+      summary: Expanding the internal storage array
+      security:
+        - 'HTTP Digest': []
+      description: |
+        This endpoint is available only if the `storage`
+        [feature](#operation/get-basic-info) is indicated.
+
+        If the size of the smallest disk in the array increases (e.g. after
+        replacing it with a larger one), you can use this endpoint to expand
+        the array to use the additional space. Note that this operation does
+        not expand the filesystem. You'll need to use the
+        [filesystem expansion endpoint](#operation/expand-internal-storage-fs)
+        to do that. The disk array must be idle to perform the expansion.
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   '/v1/ssh/':
     get:
       operationId: 'get-ssh-settings'
@@ -2932,39 +3211,225 @@ components:
         type:
           type: string
           enum:
-            - sd-card
+            - internal
           description: |
             Storage type.
 
             Possible values are:
-            * `sd-card` - SD card
-          example: sd-card
-    SDCardStorageInfo:
+            * `internal` - internal storage
+          example: internal
+    InternalStorageInfo:
       allOf:
         - $ref: '#/components/schemas/BaseStorageInfo'
-        - $ref: '#/components/schemas/SDCardInfo'
+        - $ref: '#/components/schemas/InternalStorageDetails'
     StorageInfo:
       oneOf:
-        - $ref: '#/components/schemas/SDCardStorageInfo'
+        - $ref: '#/components/schemas/InternalStorageInfo'
       discriminator:
         propertyName: type
         mapping:
-          sd-card: '#/components/schemas/SDCardStorageInfo'
-    SDCardInfo:
+          internal: '#/components/schemas/InternalStorageInfo'
+    ConnectedDiskInfo:
       type: object
       properties:
-        id:
-          type: integer
-          description: SD card identifier
-          example: 0
+        status:
+          type: string
+          enum:
+            - unused
+            - spare
+            - in-sync
+            - syncing
+            - faulty
+          description: |
+            Disk status.
+
+            Possible values are:
+            * `unused` - the disk is present but it isn't being used by the
+              disk array
+            * `spare` - the disk is being used as a spare disk by the disk
+              array and it may be used as a replacement if another disk fails
+            * `in-sync` - the disk is being used by the disk array and it is
+              fully synchronized
+            * `syncing` - the disk is being used by the disk array and it is
+              currently being synchronized
+            * `faulty` - the disk has failed and it needs to be replaced
+          example: in-sync
         capacity:
           type: integer
-          description: SD card capacity in bytes
-          example: 34359738368
+          description: Disk capacity in bytes
+          example: 1000204886016
+        model:
+          type: string
+          description: Disk model
+          example: WDC WD10EARS-00Y
+    ConnectedDiskExtendedInfo:
+      allOf:
+        - $ref: '#/components/schemas/ConnectedDiskInfo'
+        - type: object
+          properties:
+            serial_number:
+              type: string
+              description: Disk serial number
+              nullable: true
+              example: WD-WCAV5D915720
+            firmware_version:
+              type: string
+              description: Disk firmware version
+              nullable: true
+              example: 80.00A80
+            smart:
+              type: object
+              description: S.M.A.R.T. information
+              nullable: true
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - healthy
+                    - unhealthy
+                  description: |
+                    Overall S.M.A.R.T. status.
+
+                    Possible values are:
+                    * `healthy` - the disk is healthy
+                    * `unhealthy` - the disk is unhealthy and it may fail soon
+                      or it has already failed
+                  example: healthy
+                power_on_time:
+                  type: integer
+                  description: Power-on time in hours
+                  example: 1234
+                temperature:
+                  type: integer
+                  description: Disk temperature in Celsius
+                  example: 36
+    RaidLevel:
+      type: string
+      enum:
+        - linear
+        - raid-0
+        - raid-1
+        - raid-5
+      description: |
+        RAID level.
+
+        Possible values are:
+        * `linear` - linear (concatenation)
+        * `raid-0` - RAID 0 (striping)
+        * `raid-1` - RAID 1 (mirroring)
+        * `raid-5` - RAID 5 (striping with parity)
+      example: raid-1
+    RaidInfo:
+      type: object
+      properties:
+        level:
+          $ref: '#/components/schemas/RaidLevel'
+        disks:
+          type: integer
+          description: |
+            Number of disks in the RAID array when the array is fully
+            operational
+          example: 2
+        degraded:
+          type: integer
+          description: Number of failed/removed disks in the RAID array
+          example: 0
+        size:
+          type: integer
+          description: Total storage capacity of the RAID array in bytes
+          example: 1000067825664
+        activity:
+          type: string
+          enum:
+            - idle
+            - checking
+            - syncing
+            - recovering
+            - reshaping
+          description: |
+            Current RAID activity.
+
+            Possible values are:
+            * `idle` - the RAID array is idle
+            * `checking` - the RAID array is being checked for errors
+            * `syncing` - the RAID array is being synchronized
+            * `recovering` - the RAID array is recovering from a disk failure
+            * `reshaping` - the RAID array is being reshaped (e.g. due to a
+              change in the RAID configuration)
+          example: syncing
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: |
+            Activity progress percentage (0-100). The field is present only
+            when the `activity` field is not `idle`.
+          example: 67
+    InternalStorageDetails:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - offline
+            - ok
+            - degraded
+          description: |
+            Internal storage status.
+
+            Possible values are:
+            * `offline` - the internal storage is offline (i.e. there are
+              either no disks, the disk array has failed or it hasn't been
+              initialized yet)
+            * `ok` - the internal storage is working properly
+            * `degraded` - the disk array is operational but some disks need
+              a replacement
+          example: ok
+        slots:
+          type: array
+          description: |
+            A list of internal storage slots. Each slot can be either empty or
+            occupied by a disk.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: Slot identifier
+                example: 0
+              disk:
+                description: |
+                  Details about the connected disk or `null` if there is no
+                  disk in the slot
+                nullable: true
+                allOf:
+                  - $ref: '#/components/schemas/ConnectedDiskInfo'
+          example:
+            - id: 0
+              disk:
+                status: in-sync
+                capacity: 1000204886016
+                model: WDC WD10EARS-00Y
+            - id: 1
+              disk:
+                status: in-sync
+                capacity: 1000204886016
+                model: WDC WD10EARS-00Y
+        raid:
+          description: |
+            Information about the RAID array or `null` if the storage is
+            offline.
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/RaidInfo'
+        capacity:
+          type: integer
+          description: Total capacity of the storage filesystem in bytes
+          example: 983216185344
         available:
           type: integer
-          description: The amount of available space in bytes
-          example: 17179869184
+          description: The available capacity in the filesystem (in bytes)
+          example: 926970634240
     SSHSettings:
       type: object
       properties:
@@ -3172,20 +3637,18 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/StorageInfo'
-    SDCardsResponse:
+    InternalStorageResponse:
       description: OK
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/SDCardInfo'
-    SDCardResponse:
+            $ref: '#/components/schemas/InternalStorageDetails'
+    ExtendedDiskInfoResponse:
       description: OK
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/SDCardInfo'
+            $ref: '#/components/schemas/ConnectedDiskExtendedInfo'
     SSHSettingsResponse:
       description: OK
       content:

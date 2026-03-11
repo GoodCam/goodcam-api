@@ -4308,11 +4308,11 @@ components:
           example: 0
         capacity:
           type: integer
-          description: SD card capacity in bytes
+          description: Capacity of the SD card file system in bytes
           example: 34359738368
         available:
           type: integer
-          description: The amount of available space in bytes
+          description: The available capacity in the file system (in bytes)
           example: 17179869184
     SSHSettings:
       type: object
