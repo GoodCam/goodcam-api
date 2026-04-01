@@ -791,6 +791,72 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           description: Not Found
+  '/v1/network/interfaces/{interface_name}/switch/ports/{port_id}/restart-poe/':
+    post:
+      operationId: 'restart-poe-port'
+      tags:
+        - network
+      summary: Restarting PoE port
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: interface_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: port_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      description: |
+        This endpoint will power off the corresponding PoE port and then power
+        it on again. It can be used to restart a connected IP camera without
+        rebooting the whole NVR.
+
+        The endpoint is available only for network interfaces that are
+        connected to an on-board Ethernet switch with PoE support for the
+        corresponding port.
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
+  '/v1/network/interfaces/{interface_name}/switch/restart-poe/':
+    post:
+      operationId: 'restart-all-poe-ports'
+      tags:
+        - network
+      summary: Restarting all PoE ports
+      security:
+        - 'HTTP Digest': []
+      parameters:
+        - name: interface_name
+          in: path
+          required: true
+          schema:
+            type: string
+      description: |
+        This endpoint will power off all PoE ports of the corresponding switch
+        and then power them on again. It can be used to restart all connected
+        IP cameras without rebooting the whole NVR.
+
+        The endpoint is available only for network interfaces that are
+        connected to an on-board Ethernet switch having at least one PoE port.
+      responses:
+        '204':
+          description: No Content
+        '303':
+          $ref: '#/components/responses/Uninitialized'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found
   '/v1/cloud/':
     get:
       operationId: 'get-cloud-client-info'
@@ -2345,7 +2411,75 @@ components:
                 Interface MAC address as a string containing six hexadecimal
                 numbers separated with ":"
               example: 00:11:22:33:44:55
+            switch:
+              allOf:
+                - $ref: '#/components/schemas/SwitchInfo'
+                - type: object
+                  description: |
+                    If present, it means that the interface is connected to an
+                    on-board Ethernet switch. The object contains information
+                    about the switch ports and connected clients.
         - $ref: '#/components/schemas/CommonNetworkInterfaceBase'
+    SwitchInfo:
+      type: object
+      properties:
+        ports:
+          type: array
+          description: Switch ports
+          items:
+            $ref: '#/components/schemas/SwitchPortInfo'
+        clients:
+          type: array
+          description: Clients connected to the switch
+          items:
+            $ref: '#/components/schemas/SwitchClientInfo'
+    SwitchPortInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Port number
+        poe:
+          allOf:
+            - $ref: '#/components/schemas/SwitchPortPoeInfo'
+            - type: object
+              description: |
+                If present, it means that the port supports Power over
+                Ethernet.
+    SwitchPortPoeInfo:
+      type: object
+      properties:
+        active:
+          type: boolean
+          description: Indicates whether PoE is currently active on the port.
+        power:
+          type: number
+          description: |
+            Power supplied to the device connected to the port in Watts
+      example:
+        active: true
+        power: 3.5
+    SwitchClientInfo:
+      type: object
+      properties:
+        port:
+          type: integer
+          description: The switch port number where the client is connected
+        mac:
+          type: string
+          description: |
+            Client MAC address as a string containing six hexadecimal numbers
+            separated with ":"
+        ip:
+          type: array
+          description: A list of IP addresses associated with the client
+          items:
+            type: string
+      example:
+        port: 1
+        mac: '00:11:22:33:44:77'
+        ip:
+          - '192.168.2.150'
     StaticNetworkInterfaceBase:
       type: object
       properties:
@@ -2403,6 +2537,29 @@ components:
           clients:
             - mac: '00:11:22:33:44:77'
               ip: '192.168.2.150'
+        switch:
+          ports:
+            - id: 1
+              poe:
+                active: true
+                power: 3.5
+            - id: 2
+              poe:
+                active: false
+                power: 0
+            - id: 3
+              poe:
+                active: false
+                power: 0
+            - id: 4
+              poe:
+                active: false
+                power: 0
+          clients:
+            - port: 1
+              mac: '00:11:22:33:44:77'
+              ip:
+                - '192.168.2.150'
     DHCPNetworkInterfaceBase:
       type: object
       properties:
