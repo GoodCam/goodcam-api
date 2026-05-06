@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: GoodCam NVR API (alpha)
-  version: '1.0.0'
+  version: '1.1.0'
   description: |
     **This API documentation is a draft and there may be breaking changes in
     the API without prior notice. The API itself is still a work in progress,
@@ -1176,7 +1176,10 @@ paths:
                 - stream
                 - storage
             example:
+              enabled: true
               stream: primary
+              schedule:
+                - "* 8-17 * * MON-FRI"
               storage:
                 type: internal
       responses:
@@ -2901,6 +2904,21 @@ components:
         stream:
           type: string
           description: ID of the stream that's supposed to be recorded
+        schedule:
+          type: array
+          items:
+            type: string
+          description: |
+            Recording schedule as a list of cron expressions. If the field is
+            not present or set to `[]` when creating a new recording or the
+            field value is later replaced with `[]`, the scheduling is disabled
+            and the recording will be started immediately when enabled. If the
+            list is non-empty, the recording will be active when the current
+            time matches at least one of the cron expressions. The cron
+            expressions must follow
+            [The Open Cron Pattern Specification](https://github.com/open-source-cron/ocps/blob/main/specifications/OCPS-1.0.md).
+            Please note that the scheduling granularity is 1 minute, so the
+            recording may continue for up to 1 minute after the scheduled stop.
         storage:
           $ref: '#/components/schemas/RecordingStorage'
     RecordingInfoBase:
@@ -2916,6 +2934,18 @@ components:
         stream:
           type: string
           description: ID of the stream that's supposed to be recorded
+        schedule:
+          type: array
+          items:
+            type: string
+          description: |
+            Recording schedule as a list of cron expressions. If the field is
+            not present, the scheduling is disabled. Otherwise, the recording
+            will be active when the current time matches at least one of the
+            cron expressions. The cron expressions follow
+            [The Open Cron Pattern Specification](https://github.com/open-source-cron/ocps/blob/main/specifications/OCPS-1.0.md).
+            Please note that the scheduling granularity is 1 minute, so the
+            recording may continue for up to 1 minute after the scheduled stop.
         storage:
           $ref: '#/components/schemas/RecordingStorage'
         status:
@@ -2937,6 +2967,8 @@ components:
         id: 426d4f5f-2e3d-4cda-b067-83b613d04c0e
         enabled: true
         stream: primary
+        schedule:
+          - "* 8-17 * * MON-FRI"
         storage:
           type: internal
         status: running
