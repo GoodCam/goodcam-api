@@ -132,6 +132,47 @@ info:
     first user account (see
     [Creating a new user account](#operation/create-user)).
 
+    # Factory reset
+
+    The factory reset is device-specific and the exact procedure may slightly
+    vary between different NVR models. However, GoodCam firmware supports these
+    three methods:
+
+    1. Using [the corresponding API endpoint](#operation/factory-reset). This
+       method is the most convenient, but it requires knowledge of the user
+       credentials so it cannot be used when the credentials are lost.
+
+    2. Using a physical reset button (if available). The button press is
+       checked only during the device boot sequence, so the following procedure
+       is required:
+
+       1. Power off the device.
+       2. Press and hold the reset button.
+       3. Power on the device while still holding the reset button.
+       4. Release the reset button after around 15 seconds.
+       5. Wait until the device erases the settings and finishes the boot
+          sequence. The device should be reset into factory defaults now.
+
+    3. Using a special reset file. The file must be created in the root of an
+       external storage device that will be attached to the NVR (e.g. an SD
+       card or a USB drive depending on the NVR model) while it is running. The
+       file must be named `factory-reset.txt` and its content is irrelevant; it
+       may be empty. When the NVR detects the file, it will perform factory
+       reset during the next boot sequence. The following procedure is
+       required:
+
+       1. Create the `factory-reset.txt` file in the root of an external
+          storage device. The storage device must be formatted with the FAT32
+          filesystem.
+       2. If the NVR is not already powered on, power it on and wait around 30
+          seconds to make sure the device has finished the boot sequence.
+       3. Attach the external storage device to the NVR and wait a few seconds
+          for the device to detect the file.
+       4. Power off the NVR.
+       5. **Detach the external storage.**
+       6. Power on the NVR again and wait for it to boot up. The device should
+          be reset into factory defaults now.
+
     # Example: accessing an NVR in a mobile app
 
     1. Look up all `_goodcam-nvr._tcp.local` services using service discovery.
