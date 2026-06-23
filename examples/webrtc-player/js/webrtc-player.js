@@ -10,9 +10,10 @@ class StreamingSession {
      * content
      * @param {Element} playButtonElem play button element
      */
-    constructor(videoElem, playButtonElem) {
+    constructor(videoElem, playButtonElem, errorCallback) {
         this.videoElem = videoElem;
         this.playButtonElem = playButtonElem;
+        this.errorCallback = errorCallback;
 
         this.bufferLocalICECandidates = true;
         this.bufferedLocalICECandidates = [];
@@ -118,6 +119,8 @@ class StreamingSession {
 
         this.bufferRemoteICECandidates = true;
         this.bufferedRemoteICECandidates = [];
+
+        this.errorCallback?.(err || new Error('Streaming session terminated'));
     }
 
     /**
@@ -285,9 +288,11 @@ class VideoPlayer {
      * Create a new video player.
      *
      * @param {Element} videoElem video element
+     * @param {Element} playButtonElem play button element
+     * @param {Function} errorCallback error callback function called when an error occurs in the webRTC session
      */
-    constructor(videoElem, playButtonElem) {
-        this.session = new StreamingSession(videoElem, playButtonElem);
+    constructor(videoElem, playButtonElem, errorCallback) {
+        this.session = new StreamingSession(videoElem, playButtonElem, errorCallback);
         this.connect = null;
     }
 
